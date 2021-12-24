@@ -29,6 +29,12 @@ include(GNUInstallDirs)
 include("cmake/mimalloc-config-version.cmake")
 
 set(mi_sources
+    # Arma 3 CMA
+    src/cma/cma_api.cpp
+    src/cma/cma_api.h
+    src/cma/cma_utils.cpp
+    src/cma/cma_utils.h
+    # Arma 3 CMA - End
     src/stats.c
     src/random.c
     src/os.c
