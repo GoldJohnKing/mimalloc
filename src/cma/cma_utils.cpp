@@ -10,7 +10,7 @@ int CmaGetReservedHugePagesCount(void)
 
 	GlobalMemoryStatusEx(&mem_status);
 
-	if (mem_status.ullTotalPhys > 12884901888) // Avail > 12G
+	if (mem_status.ullAvailPhys > 12884901888) // Avail > 12G
 		return 6;
 
 	if (mem_status.ullAvailPhys > 8589934592) // Avail > 8G
