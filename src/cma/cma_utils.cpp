@@ -5,6 +5,7 @@
 
 int CmaGetReservedHugePagesCount(void)
 {
+#ifdef WITH_LOCK_PAGES
 	MEMORYSTATUSEX mem_status;
 	mem_status.dwLength = sizeof(mem_status);
 
@@ -24,6 +25,7 @@ int CmaGetReservedHugePagesCount(void)
 
 	if (mem_status.ullAvailPhys > 4294967296) // Avail > 4G
 		return 1;
-	
+#endif // WITH_LOCK_PAGES
+
 	return 0;
 }
