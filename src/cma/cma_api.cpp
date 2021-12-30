@@ -21,7 +21,7 @@ size_t __stdcall MemFlushCache(size_t /*size*/)
 
 void __stdcall MemFlushCacheAll(void)
 {
-	mi_collect(false);
+	mi_collect(true);
 }
 
 size_t __stdcall MemSize(void* mem)
