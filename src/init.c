@@ -7,6 +7,8 @@ terms of the MIT license. A copy of the license can be found in the file
 #include "mimalloc.h"
 #include "mimalloc-internal.h"
 
+#include "./cma/cma_utils.h" // Arma 3 CMA
+
 #include <string.h>  // memcpy, memset
 #include <stdlib.h>  // atexit
 
@@ -492,6 +494,9 @@ void mi_process_init(void) mi_attr_noexcept {
   mi_process_setup_auto_thread_done();
 
   
+  mi_option_enable(mi_option_large_os_pages); // Arma 3 CMA - Enable large pages support by default
+  if (mi_option_is_enabled(mi_option_large_os_pages))  // Arma 3 CMA - Enable reserved large pages support if system has plenty of memory
+      mi_option_set(mi_option_reserve_huge_os_pages, CmaGetReservedHugePagesCount());
   mi_detect_cpu_features();
   _mi_os_init();
   mi_heap_main_init();
