@@ -19,12 +19,6 @@ int CmaGetReservedHugePagesCount(void)
 
 	if (mem_status.ullAvailPhys > 8589934592) // Avail > 8G
 		return 4;
-
-	if (mem_status.ullAvailPhys > 6442450944) // Avail > 6G
-		return 2;
-
-	if (mem_status.ullAvailPhys > 4294967296) // Avail > 4G
-		return 1;
 #endif // WITH_LOCK_PAGES
 
 	return 0;
