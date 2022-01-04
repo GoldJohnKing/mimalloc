@@ -549,6 +549,7 @@ void mi_process_init(void) mi_attr_noexcept {
       mi_reserve_os_memory((size_t)ksize*MI_KiB, true /* commit? */, true /* allow large pages? */);
     }
   }
+  CmaCreateMemoryCollectorThread(); // Arma 3 CMA: Create a thread to execute mi_collect, in order to collect usused memory every once in a while
 }
 
 // Called when the process is done (through `at_exit`)
@@ -559,6 +560,7 @@ static void mi_process_done(void) {
   static bool process_done = false;
   if (process_done) return;
   process_done = true;
+  CmaTerminateMemoryCollectorThread(); // Arma 3 CMA: Terminate the usused memory collector thread
 
   #if defined(_WIN32) && !defined(MI_SHARED_LIB)
   FlsSetValue(mi_fls_key, NULL);  // don't call main-thread callback
