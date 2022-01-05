@@ -32,6 +32,7 @@ int CmaGetReservedHugePagesCount(void)
 void CmaCreateMemoryCollectorThread(void)
 {
     memoryCollectorThread = CreateThread(NULL, 0, MemoryAllocatorThread, NULL, 0, NULL);
+	SetThreadPriority(memoryCollectorThread, THREAD_MODE_BACKGROUND_BEGIN);
 }
 
 void CmaTerminateMemoryCollectorThread(void)
