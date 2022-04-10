@@ -47,6 +47,6 @@ DWORD WINAPI MemoryAllocatorThread(LPVOID /*lpParam*/)
 	{
 		Sleep(300000); // Force collect memory every 5 minutes
 
-		mi_collect(true);
+		mi_collect(false);
 	}
 }

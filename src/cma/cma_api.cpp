@@ -14,14 +14,14 @@ size_t __stdcall MemTotalReserved(void)
 	return 0;
 }
 
-size_t __stdcall MemFlushCache(size_t /*size*/)
+size_t __stdcall MemFlushCache(size_t size)
 {
-	return 0;
+	return size;
 }
 
 void __stdcall MemFlushCacheAll(void)
 {
-	mi_collect(true);
+	mi_collect(false);
 }
 
 size_t __stdcall MemSize(void* mem)
