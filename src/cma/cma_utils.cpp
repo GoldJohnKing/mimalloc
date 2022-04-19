@@ -10,7 +10,7 @@ DWORD WINAPI MemoryAllocatorThread(LPVOID lpParam);
 
 int CmaGetReservedHugePagesCount(void)
 {
-#ifdef WITH_LOCK_PAGES
+#ifdef CMA_LOCK_PAGES
 	MEMORYSTATUSEX mem_status;
 	mem_status.dwLength = sizeof(mem_status);
 
@@ -24,7 +24,7 @@ int CmaGetReservedHugePagesCount(void)
 
 	if (mem_status.ullAvailPhys > 8589934592) // Avail > 8G
 		return 4;
-#endif // WITH_LOCK_PAGES
+#endif // CMA_LOCK_PAGES
 
 	return 0;
 }
