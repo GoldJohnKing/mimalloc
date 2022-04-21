@@ -58,7 +58,5 @@ void __stdcall MemFreeA(void* mem)
 
 void __stdcall EnableHugePages(void)
 {
-	mi_option_enable(mi_option_large_os_pages);
-	if (mi_option_is_enabled(mi_option_large_os_pages))
-		mi_option_set(mi_option_reserve_huge_os_pages, CmaGetReservedHugePagesCount());
+	CmaSetMemoryAllocatorRuntimeOptions();
 }

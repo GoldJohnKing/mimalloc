@@ -1,7 +1,7 @@
 #pragma once
 
-int CmaGetReservedHugePagesCount(void);
+void CmaSetMemoryAllocatorRuntimeOptions(void);
 
-void CmaCreateMemoryCollectorThread(void);
+void CmaCreateScheduledMemoryCollectionThread(void);
 
-void CmaTerminateMemoryCollectorThread(void);
+void CmaTerminateScheduledMemoryCollectionThread(void);

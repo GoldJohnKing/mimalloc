@@ -1,17 +1,14 @@
 #include "cma_utils.h"
 
 #include "mimalloc.h"
+#include "mimalloc-types.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
-HANDLE memoryCollectorThread;
-DWORD WINAPI MemoryAllocatorThread(LPVOID lpParam);
-
 int CmaGetReservedHugePagesCount(void)
 {
-#ifdef CMA_LOCK_PAGES
-	MEMORYSTATUSEX mem_status;
+	MEMORYSTATUSEX mem_status{};
 	mem_status.dwLength = sizeof(mem_status);
 
 	GlobalMemoryStatusEx(&mem_status);
@@ -24,29 +21,56 @@ int CmaGetReservedHugePagesCount(void)
 
 	if (mem_status.ullAvailPhys > 8589934592) // Avail > 8G
 		return 4;
-#endif // CMA_LOCK_PAGES
 
 	return 0;
 }
 
-void CmaCreateMemoryCollectorThread(void)
+size_t CmaGetReservedOsMemorySize(void)
 {
-    memoryCollectorThread = CreateThread(NULL, 0, MemoryAllocatorThread, NULL, 0, NULL);
-	SetThreadPriority(memoryCollectorThread, THREAD_MODE_BACKGROUND_BEGIN);
+	MEMORYSTATUSEX mem_status{};
+	mem_status.dwLength = sizeof(mem_status);
+
+	GlobalMemoryStatusEx(&mem_status);
+
+	if (mem_status.ullAvailPhys > 8589934592) // Avail > 8G
+		return min((floor(mem_status.ullAvailPhys / (MI_GiB * MI_SIZE_BITS)) - 2) * MI_GiB, 8 * MI_GiB); // (Avail - 2G) but no more than 8G
+
+	return 0;
 }
 
-void CmaTerminateMemoryCollectorThread(void)
+void CmaSetMemoryAllocatorRuntimeOptions(void)
 {
-	TerminateThread(memoryCollectorThread, 0);
-	CloseHandle(memoryCollectorThread);
+	mi_option_enable(mi_option_large_os_pages); // Enable large pages by default
+
+#ifdef CMA_LOCK_PAGES // Enable reserved large pages on CMA_LOCK_PAGES build variant
+	if (mi_option_is_enabled(mi_option_large_os_pages))
+		mi_option_set(mi_option_reserve_huge_os_pages, CmaGetReservedHugePagesCount());
+#elif CMA_RESERVE_OS_MEMORY // Reserve os memory on CMA_RESERVE_OS_MEMORY build variant
+	if (!mi_option_is_enabled(mi_option_reserve_huge_os_pages))
+		mi_option_set(mi_option_reserve_os_memory, CmaGetReservedOsMemorySize());
+#endif CMA_LOCK_PAGES
 }
 
 DWORD WINAPI MemoryAllocatorThread(LPVOID /*lpParam*/)
 {
-	while (true)
+	while (true) // Force collect memory every 5 minutes
 	{
-		Sleep(300000); // Force collect memory every 5 minutes
+		Sleep(300000);
 
 		mi_collect(false);
 	}
+}
+
+HANDLE scheduled_memory_collection_thread;
+
+void CmaCreateScheduledMemoryCollectionThread(void)
+{
+	scheduled_memory_collection_thread = CreateThread(NULL, 0, MemoryAllocatorThread, NULL, 0, NULL);
+	SetThreadPriority(scheduled_memory_collection_thread, THREAD_MODE_BACKGROUND_BEGIN);
+}
+
+void CmaTerminateScheduledMemoryCollectionThread(void)
+{
+	TerminateThread(scheduled_memory_collection_thread, 0);
+	CloseHandle(scheduled_memory_collection_thread);
 }

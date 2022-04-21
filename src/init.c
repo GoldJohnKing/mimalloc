@@ -572,9 +572,7 @@ void mi_process_init(void) mi_attr_noexcept {
   mi_process_setup_auto_thread_done();
 
   
-  mi_option_enable(mi_option_large_os_pages); // Arma 3 CMA - Enable large pages support by default
-  if (mi_option_is_enabled(mi_option_large_os_pages))  // Arma 3 CMA - Enable reserved large pages support if system has plenty of memory
-      mi_option_set(mi_option_reserve_huge_os_pages, CmaGetReservedHugePagesCount());
+  CmaSetMemoryAllocatorRuntimeOptions(); // Arma 3 CMA: Set mimalloc's runtime options based on user's actual system specifications
   mi_detect_cpu_features();
   _mi_os_init();
   mi_heap_main_init();
@@ -609,7 +607,7 @@ void mi_process_init(void) mi_attr_noexcept {
     }
   }
 #ifdef CMA_SCHEDULED_COLLECT
-  CmaCreateMemoryCollectorThread(); // Arma 3 CMA: Create a thread to execute mi_collect, in order to collect usused memory every once in a while
+  CmaCreateScheduledMemoryCollectionThread(); // Arma 3 CMA: Create a thread to execute mi_collect, in order to collect usused memory every once in a while
 #endif
 }
 
@@ -622,7 +620,7 @@ static void mi_process_done(void) {
   if (process_done) return;
   process_done = true;
 #ifdef CMA_SCHEDULED_COLLECT
-  CmaTerminateMemoryCollectorThread(); // Arma 3 CMA: Terminate the usused memory collector thread
+  CmaTerminateScheduledMemoryCollectionThread(); // Arma 3 CMA: Terminate the usused memory collector thread
 #endif
 
   #if defined(_WIN32) && !defined(MI_SHARED_LIB)
