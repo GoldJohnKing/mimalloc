@@ -12,6 +12,10 @@
       <Configuration>Rel-NoCollect</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
+    <ProjectConfiguration Include="Rel-ReserveOsMemory|x64">
+      <Configuration>Rel-ReserveOsMemory</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
     <ProjectConfiguration Include="Rel-ScheduledCollect|x64">
       <Configuration>Rel-ScheduledCollect</Configuration>
       <Platform>x64</Platform>
@@ -31,6 +35,12 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>v143</PlatformToolset>
@@ -64,18 +74,22 @@
   <PropertyGroup>
     <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">D:\GitRepos\mimalloc\ide\v206\Release\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">D:\GitRepos\mimalloc\ide\v206\Release\</OutDir>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">D:\GitRepos\mimalloc\ide\v206\Release\</OutDir>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">D:\GitRepos\mimalloc\ide\v206\Release\</OutDir>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">D:\GitRepos\mimalloc\ide\v206\Release\</OutDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">mimalloc-static.dir\Release\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">mimalloc-static.dir\Release\</IntDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">mimalloc-static.dir\Release\</IntDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">mimalloc-static.dir\Release\</IntDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">mimalloc-static.dir\Release\</IntDir>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">mimalloc-v206</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">mimalloc-v206-reserve-os-memory</TargetName>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">mimalloc-v206-scheduled-collect</TargetName>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">mimalloc-v206-no-collect</TargetName>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">mimalloc-v206-lock-pages</TargetName>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.dll</TargetExt>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">.dll</TargetExt>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">.dll</TargetExt>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">.dll</TargetExt>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">.dll</TargetExt>
@@ -94,6 +108,55 @@
       <UseFullPaths>false</UseFullPaths>
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;MI_PADDING=0;MI_STATIC_LIB;CMAKE_INTDIR="Release"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <DebugInformationFormat>
+      </DebugInformationFormat>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;MI_PADDING=0;MI_STATIC_LIB;CMAKE_INTDIR=\"Release\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\GitRepos\mimalloc\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\GitRepos\mimalloc\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Lib>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+    </Lib>
+    <Link>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+    </Link>
+    <Link>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\GitRepos\mimalloc\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /Zc:__cplusplus</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;MI_PADDING=0;MI_STATIC_LIB;CMAKE_INTDIR="Release";CMA_RESERVE_OS_MEMORY</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <DebugInformationFormat>
       </DebugInformationFormat>
@@ -283,6 +346,7 @@
     <ClCompile Include="D:\GitRepos\mimalloc\src\cma\cma_api.h">
       <ObjectFileName>$(IntDir)/src/cma/cma_api.h.obj</ObjectFileName>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">CompileAsCpp</CompileAs>
@@ -293,90 +357,105 @@
     <ClCompile Include="D:\GitRepos\mimalloc\src\cma\cma_utils.h">
       <ObjectFileName>$(IntDir)/src/cma/cma_utils.h.obj</ObjectFileName>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="D:\GitRepos\mimalloc\src\stats.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="D:\GitRepos\mimalloc\src\random.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="D:\GitRepos\mimalloc\src\os.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="D:\GitRepos\mimalloc\src\bitmap.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="D:\GitRepos\mimalloc\src\arena.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="D:\GitRepos\mimalloc\src\segment-cache.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="D:\GitRepos\mimalloc\src\segment.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="D:\GitRepos\mimalloc\src\page.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="D:\GitRepos\mimalloc\src\alloc.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="D:\GitRepos\mimalloc\src\alloc-aligned.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="D:\GitRepos\mimalloc\src\alloc-posix.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="D:\GitRepos\mimalloc\src\heap.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="D:\GitRepos\mimalloc\src\options.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="D:\GitRepos\mimalloc\src\init.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">CompileAsCpp</CompileAs>

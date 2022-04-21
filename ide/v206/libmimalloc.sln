@@ -10,6 +10,7 @@ Global
 		Release|x64 = Release|x64
 		Rel-LockPages|x64 = Rel-LockPages|x64
 		Rel-NoCollect|x64 = Rel-NoCollect|x64
+		Rel-ReserveOsMemory|x64 = Rel-ReserveOsMemory|x64
 		Rel-ScheduledCollect|x64 = Rel-ScheduledCollect|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
@@ -19,6 +20,8 @@ Global
 		{3D7D41DD-5D9F-3AA3-AF08-E92D18B40A2E}.Rel-LockPages|x64.Build.0 = Rel-LockPages|x64
 		{3D7D41DD-5D9F-3AA3-AF08-E92D18B40A2E}.Rel-NoCollect|x64.ActiveCfg = Rel-NoCollect|x64
 		{3D7D41DD-5D9F-3AA3-AF08-E92D18B40A2E}.Rel-NoCollect|x64.Build.0 = Rel-NoCollect|x64
+		{3D7D41DD-5D9F-3AA3-AF08-E92D18B40A2E}.Rel-ReserveOsMemory|x64.ActiveCfg = Rel-ReserveOsMemory|x64
+		{3D7D41DD-5D9F-3AA3-AF08-E92D18B40A2E}.Rel-ReserveOsMemory|x64.Build.0 = Rel-ReserveOsMemory|x64
 		{3D7D41DD-5D9F-3AA3-AF08-E92D18B40A2E}.Rel-ScheduledCollect|x64.ActiveCfg = Rel-ScheduledCollect|x64
 		{3D7D41DD-5D9F-3AA3-AF08-E92D18B40A2E}.Rel-ScheduledCollect|x64.Build.0 = Rel-ScheduledCollect|x64
 	EndGlobalSection
