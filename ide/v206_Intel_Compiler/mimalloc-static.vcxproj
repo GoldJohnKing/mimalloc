@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <PreferredToolArchitecture>x64</PreferredToolArchitecture>
@@ -39,30 +39,35 @@
     <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>Intel C++ Compiler 2022</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
+    <InterproceduralOptimization>true</InterproceduralOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>Intel C++ Compiler 2022</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
+    <InterproceduralOptimization>true</InterproceduralOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>Intel C++ Compiler 2022</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
+    <InterproceduralOptimization>true</InterproceduralOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>Intel C++ Compiler 2022</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
+    <InterproceduralOptimization>true</InterproceduralOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>Intel C++ Compiler 2022</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
+    <InterproceduralOptimization>true</InterproceduralOptimization>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -94,6 +99,21 @@
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">.dll</TargetExt>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">.dll</TargetExt>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Rel-ReserveOsMemory|x64'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <AdditionalIncludeDirectories>D:\GitRepos\mimalloc\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -102,7 +122,7 @@
       <ExceptionHandling>Sync</ExceptionHandling>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <Optimization>MaxSpeed</Optimization>
+      <Optimization>MaxSpeedHighLevel</Optimization>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <UseFullPaths>false</UseFullPaths>
@@ -152,7 +172,7 @@
       <ExceptionHandling>Sync</ExceptionHandling>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <Optimization>MaxSpeed</Optimization>
+      <Optimization>MaxSpeedHighLevel</Optimization>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <UseFullPaths>false</UseFullPaths>
@@ -202,7 +222,7 @@
       <ExceptionHandling>Sync</ExceptionHandling>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <Optimization>MaxSpeed</Optimization>
+      <Optimization>MaxSpeedHighLevel</Optimization>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <UseFullPaths>false</UseFullPaths>
@@ -252,7 +272,7 @@
       <ExceptionHandling>Sync</ExceptionHandling>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <Optimization>MaxSpeed</Optimization>
+      <Optimization>MaxSpeedHighLevel</Optimization>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <UseFullPaths>false</UseFullPaths>
@@ -302,7 +322,7 @@
       <ExceptionHandling>Sync</ExceptionHandling>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <Optimization>MaxSpeed</Optimization>
+      <Optimization>MaxSpeedHighLevel</Optimization>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <UseFullPaths>false</UseFullPaths>
