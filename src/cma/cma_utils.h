@@ -2,6 +2,6 @@
 
 void CmaSetMemoryAllocatorRuntimeOptions(void);
 
-void CmaCreateScheduledMemoryCollectionThread(void);
+void CmaCreateScheduledMemoryCollectorThread(void);
 
-void CmaTerminateScheduledMemoryCollectionThread(void);
+void CmaTerminateScheduledMemoryCollectorThread(void);

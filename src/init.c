@@ -609,7 +609,7 @@ void mi_process_init(void) mi_attr_noexcept {
     }
   }
 #ifdef CMA_SCHEDULED_COLLECT
-  CmaCreateScheduledMemoryCollectionThread(); // Arma 3 CMA: Create a thread to execute mi_collect, in order to collect usused memory every once in a while
+  CmaCreateScheduledMemoryCollectorThread(); // Arma 3 CMA: Create a thread to execute mi_collect, in order to collect usused memory every once in a while
 #endif
 }
 
@@ -622,7 +622,7 @@ static void mi_cdecl mi_process_done(void) {
   if (process_done) return;
   process_done = true;
 #ifdef CMA_SCHEDULED_COLLECT
-  CmaTerminateScheduledMemoryCollectionThread(); // Arma 3 CMA: Terminate the usused memory collector thread
+  CmaTerminateScheduledMemoryCollectorThread(); // Arma 3 CMA: Terminate the usused memory collector thread
 #endif
 
   #if defined(_WIN32) && !defined(MI_SHARED_LIB)

@@ -45,15 +45,15 @@ void CmaSetMemoryAllocatorRuntimeOptions(void)
 #ifdef CMA_LOCK_PAGES // Enable reserved large pages on CMA_LOCK_PAGES build variant
 	if (mi_option_is_enabled(mi_option_large_os_pages))
 		mi_option_set(mi_option_reserve_huge_os_pages, CmaGetReservedHugePagesCount());
-#elif CMA_RESERVE_OS_MEMORY // Reserve os memory on CMA_RESERVE_OS_MEMORY build variant
-	if (!mi_option_is_enabled(mi_option_reserve_huge_os_pages))
-		mi_option_set(mi_option_reserve_os_memory, CmaGetReservedOsMemorySize());
 #endif CMA_LOCK_PAGES
+#ifdef CMA_RESERVE_OS_MEMORY // Reserve os memory on CMA_RESERVE_OS_MEMORY build variant
+	mi_option_set(mi_option_reserve_os_memory, CmaGetReservedOsMemorySize());
+#endif CMA_RESERVE_OS_MEMORY
 }
 
-DWORD WINAPI MemoryAllocatorThread(LPVOID /*lpParam*/)
+DWORD WINAPI ScheduledMemoryCollectorThread(LPVOID /*lpParam*/)
 {
-	while (true) // Force collect memory every 5 minutes
+	while (true) // Collect memory every 5 minutes
 	{
 		Sleep(300000);
 
@@ -61,16 +61,16 @@ DWORD WINAPI MemoryAllocatorThread(LPVOID /*lpParam*/)
 	}
 }
 
-HANDLE scheduled_memory_collection_thread;
+HANDLE scheduled_memory_collector_thread;
 
-void CmaCreateScheduledMemoryCollectionThread(void)
+void CmaCreateScheduledMemoryCollectorThread(void)
 {
-	scheduled_memory_collection_thread = CreateThread(NULL, 0, MemoryAllocatorThread, NULL, 0, NULL);
-	SetThreadPriority(scheduled_memory_collection_thread, THREAD_MODE_BACKGROUND_BEGIN);
+	scheduled_memory_collector_thread = CreateThread(NULL, 0, ScheduledMemoryCollectorThread, NULL, 0, NULL);
+	SetThreadPriority(scheduled_memory_collector_thread, THREAD_MODE_BACKGROUND_BEGIN);
 }
 
-void CmaTerminateScheduledMemoryCollectionThread(void)
+void CmaTerminateScheduledMemoryCollectorThread(void)
 {
-	TerminateThread(scheduled_memory_collection_thread, 0);
-	CloseHandle(scheduled_memory_collection_thread);
+	TerminateThread(scheduled_memory_collector_thread, 0);
+	CloseHandle(scheduled_memory_collector_thread);
 }
