@@ -46,9 +46,6 @@ void CmaSetMemoryAllocatorRuntimeOptions(void)
 	if (mi_option_is_enabled(mi_option_large_os_pages))
 		mi_option_set(mi_option_reserve_huge_os_pages, CmaGetReservedHugePagesCount());
 #endif CMA_LOCK_PAGES
-#ifdef CMA_RESERVE_OS_MEMORY // Reserve os memory on CMA_RESERVE_OS_MEMORY build variant
-	mi_option_set(mi_option_reserve_os_memory, CmaGetReservedOsMemorySize());
-#endif CMA_RESERVE_OS_MEMORY
 }
 
 DWORD WINAPI ScheduledMemoryCollectorThread(LPVOID /*lpParam*/)
