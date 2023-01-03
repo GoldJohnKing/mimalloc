@@ -1,0 +1,5 @@
+# Ignore all build files except solution and project file
+*
+!.gitignore
+!libmimalloc.sln
+!mimalloc-static.vcxproj
