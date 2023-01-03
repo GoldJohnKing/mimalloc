@@ -78,7 +78,7 @@
     <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">mimalloc-v209</TargetName>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">mimalloc-v209-scheduled-collect</TargetName>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">mimalloc-v209-no-collect</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">mimalloc-v206-lock-pages</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Rel-LockPages|x64'">mimalloc-v209-lock-pages</TargetName>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.dll</TargetExt>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Rel-ScheduledCollect|x64'">.dll</TargetExt>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Rel-NoCollect|x64'">.dll</TargetExt>
