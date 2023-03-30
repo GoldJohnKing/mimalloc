@@ -1,7 +1,7 @@
 #include "cma_utils.h"
 
 #include "mimalloc.h"
-#include "mimalloc-types.h"
+#include "mimalloc/types.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
