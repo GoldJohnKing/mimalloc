@@ -8,10 +8,19 @@ EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Release|x64 = Release|x64
+		Rel-LockPages|x64 = Rel-LockPages|x64
+		Rel-NoCollect|x64 = Rel-NoCollect|x64
+		Rel-ScheduledCollect|x64 = Rel-ScheduledCollect|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{DFDFDF91-D72E-314A-BD77-88B833A76415}.Release|x64.ActiveCfg = Release|x64
 		{DFDFDF91-D72E-314A-BD77-88B833A76415}.Release|x64.Build.0 = Release|x64
+		{DFDFDF91-D72E-314A-BD77-88B833A76415}.Rel-LockPages|x64.ActiveCfg = Rel-LockPages|x64
+		{DFDFDF91-D72E-314A-BD77-88B833A76415}.Rel-LockPages|x64.Build.0 = Rel-LockPages|x64
+		{DFDFDF91-D72E-314A-BD77-88B833A76415}.Rel-NoCollect|x64.ActiveCfg = Rel-NoCollect|x64
+		{DFDFDF91-D72E-314A-BD77-88B833A76415}.Rel-NoCollect|x64.Build.0 = Rel-NoCollect|x64
+		{DFDFDF91-D72E-314A-BD77-88B833A76415}.Rel-ScheduledCollect|x64.ActiveCfg = Rel-ScheduledCollect|x64
+		{DFDFDF91-D72E-314A-BD77-88B833A76415}.Rel-ScheduledCollect|x64.Build.0 = Rel-ScheduledCollect|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
