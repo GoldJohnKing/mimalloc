@@ -45,7 +45,7 @@ void CmaSetMemoryAllocatorRuntimeOptions(void)
 #ifdef CMA_LOCK_PAGES // Enable reserved large pages on CMA_LOCK_PAGES build variant
 	if (mi_option_is_enabled(mi_option_large_os_pages))
 		mi_option_set(mi_option_reserve_huge_os_pages, CmaGetReservedHugePagesCount());
-#endif CMA_LOCK_PAGES
+#endif
 }
 
 DWORD WINAPI ScheduledMemoryCollectorThread(LPVOID /*lpParam*/)

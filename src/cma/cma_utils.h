@@ -1,5 +1,3 @@
-#pragma once
-
 void CmaSetMemoryAllocatorRuntimeOptions(void);
 
 void CmaCreateScheduledMemoryCollectorThread(void);

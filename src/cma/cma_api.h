@@ -1,5 +1,3 @@
-#pragma once
-
 extern "C" {
 	__declspec(dllexport) size_t __stdcall MemTotalCommitted(void);
 
