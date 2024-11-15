@@ -312,20 +312,28 @@ static size_t mi_segment_info_size(mi_segment_t* segment) {
   return segment->segment_info_slices * MI_SEGMENT_SLICE_SIZE;
 }
 
-static uint8_t* _mi_segment_page_start_from_slice(const mi_segment_t* segment, const mi_slice_t* slice, size_t xblock_size, size_t* page_size)
+static uint8_t* _mi_segment_page_start_from_slice(const mi_segment_t* segment, const mi_slice_t* slice, size_t block_size, size_t* page_size)
 {
-  ptrdiff_t idx = slice - segment->slices;
-  size_t psize = (size_t)slice->slice_count * MI_SEGMENT_SLICE_SIZE;
+  const ptrdiff_t idx = slice - segment->slices;
+  const size_t psize = (size_t)slice->slice_count * MI_SEGMENT_SLICE_SIZE;
+  uint8_t* const pstart = (uint8_t*)segment + (idx*MI_SEGMENT_SLICE_SIZE);
   // make the start not OS page aligned for smaller blocks to avoid page/cache effects
-  // note: the offset must always be an xblock_size multiple since we assume small allocations
+  // note: the offset must always be a block_size multiple since we assume small allocations
   // are aligned (see `mi_heap_malloc_aligned`).
   size_t start_offset = 0;
-  if (xblock_size >= MI_INTPTR_SIZE) {
-    if (xblock_size <= 64) { start_offset = 3*xblock_size; }
-    else if (xblock_size <= 512) { start_offset = xblock_size; }
+  if (block_size > 0 && block_size <= MI_MAX_ALIGN_GUARANTEE) {
+    // for small objects, ensure the page start is aligned with the block size (PR#66 by kickunderscore)
+    const size_t adjust = block_size - ((uintptr_t)pstart % block_size);
+    if (adjust < block_size && psize >= block_size + adjust) {
+      start_offset += adjust;
+    }
+  }
+  if (block_size >= MI_INTPTR_SIZE) {
+    if (block_size <= 64) { start_offset += 3*block_size; }
+    else if (block_size <= 512) { start_offset += block_size; }
   }
   if (page_size != NULL) { *page_size = psize - start_offset; }
-  return (uint8_t*)segment + ((idx*MI_SEGMENT_SLICE_SIZE) + start_offset);
+  return (pstart + start_offset);
 }
 
 // Start of the page available memory; can be used on uninitialized pages
@@ -339,7 +347,7 @@ uint8_t* _mi_segment_page_start(const mi_segment_t* segment, const mi_page_t* pa
 }
 
 
-static size_t mi_segment_calculate_slices(size_t required, size_t* pre_size, size_t* info_slices) {
+static size_t mi_segment_calculate_slices(size_t required, size_t* info_slices) {
   size_t page_size = _mi_os_page_size();
   size_t isize     = _mi_align_up(sizeof(mi_segment_t), page_size);
   size_t guardsize = 0;
@@ -353,7 +361,6 @@ static size_t mi_segment_calculate_slices(size_t required, size_t* pre_size, siz
     }
   }
 
-  if (pre_size != NULL) *pre_size = isize;
   isize = _mi_align_up(isize + guardsize, MI_SEGMENT_SLICE_SIZE);
   if (info_slices != NULL) *info_slices = isize / MI_SEGMENT_SLICE_SIZE;
   size_t segment_size = (required==0 ? MI_SEGMENT_SIZE : _mi_align_up( required + isize + guardsize, MI_SEGMENT_SLICE_SIZE) );
@@ -616,7 +623,9 @@ static void mi_segment_span_free(mi_segment_t* segment, size_t slice_index, size
   mi_assert_internal(slice->slice_count == slice_count); // no overflow?
   slice->slice_offset = 0;
   if (slice_count > 1) {
-    mi_slice_t* last = &segment->slices[slice_index + slice_count - 1];
+    mi_slice_t* last = slice + slice_count - 1;
+    mi_slice_t* end  = (mi_slice_t*)mi_segment_slices_end(segment);
+    if (last > end) { last = end; }
     last->slice_count = 0;
     last->slice_offset = (uint32_t)(sizeof(mi_page_t)*(slice_count - 1));
     last->block_size = 0;
@@ -800,7 +809,7 @@ static mi_page_t* mi_segments_page_find_and_allocate(size_t slice_count, mi_aren
 ----------------------------------------------------------- */
 
 static mi_segment_t* mi_segment_os_alloc( size_t required, size_t page_alignment, bool eager_delayed, mi_arena_id_t req_arena_id,
-                                          size_t* psegment_slices, size_t* ppre_size, size_t* pinfo_slices,
+                                          size_t* psegment_slices, size_t* pinfo_slices,
                                           bool commit, mi_segments_tld_t* tld, mi_os_tld_t* os_tld)
 
 {
@@ -817,7 +826,7 @@ static mi_segment_t* mi_segment_os_alloc( size_t required, size_t page_alignment
     align_offset = _mi_align_up( info_size, MI_SEGMENT_ALIGN );
     const size_t extra = align_offset - info_size;
     // recalculate due to potential guard pages
-    *psegment_slices = mi_segment_calculate_slices(required + extra, ppre_size, pinfo_slices);
+    *psegment_slices = mi_segment_calculate_slices(required + extra, pinfo_slices);
     mi_assert_internal(*psegment_slices > 0 && *psegment_slices <= UINT32_MAX);
   }
 
@@ -866,8 +875,7 @@ static mi_segment_t* mi_segment_alloc(size_t required, size_t page_alignment, mi
 
   // calculate needed sizes first
   size_t info_slices;
-  size_t pre_size;
-  size_t segment_slices = mi_segment_calculate_slices(required, &pre_size, &info_slices);
+  size_t segment_slices = mi_segment_calculate_slices(required, &info_slices);
   mi_assert_internal(segment_slices > 0 && segment_slices <= UINT32_MAX);
 
   // Commit eagerly only if not the first N lazy segments (to reduce impact of many threads that allocate just a little)
@@ -879,7 +887,7 @@ static mi_segment_t* mi_segment_alloc(size_t required, size_t page_alignment, mi
 
   // Allocate the segment from the OS
   mi_segment_t* segment = mi_segment_os_alloc(required, page_alignment, eager_delay, req_arena_id,
-                                              &segment_slices, &pre_size, &info_slices, commit, tld, os_tld);
+                                              &segment_slices, &info_slices, commit, tld, os_tld);
   if (segment == NULL) return NULL;
 
   // zero the segment info? -- not always needed as it may be zero initialized from the OS
@@ -907,8 +915,7 @@ static mi_segment_t* mi_segment_alloc(size_t required, size_t page_alignment, mi
   if (MI_SECURE>0) {
     // in secure mode, we set up a protected page in between the segment info
     // and the page data, and at the end of the segment.
-    size_t os_pagesize = _mi_os_page_size();
-    mi_assert_internal(mi_segment_info_size(segment) - os_pagesize >= pre_size);
+    size_t os_pagesize = _mi_os_page_size();    
     _mi_os_protect((uint8_t*)segment + mi_segment_info_size(segment) - os_pagesize, os_pagesize);
     uint8_t* end = (uint8_t*)segment + mi_segment_size(segment) - os_pagesize;
     mi_segment_ensure_committed(segment, end, os_pagesize, tld->stats);
@@ -999,11 +1006,13 @@ static mi_slice_t* mi_segment_page_clear(mi_page_t* page, mi_segments_tld_t* tld
     _mi_os_reset(start, psize, tld->stats);
   }
 
-  // zero the page data, but not the segment fields
+  // zero the page data, but not the segment fields and heap tag
   page->is_zero_init = false;
+  uint8_t heap_tag = page->heap_tag;
   ptrdiff_t ofs = offsetof(mi_page_t, capacity);
   _mi_memzero((uint8_t*)page + ofs, sizeof(*page) - ofs);
   page->block_size = 1;
+  page->heap_tag = heap_tag;
 
   // and free it
   mi_slice_t* slice = mi_segment_span_free_coalesce(mi_page_to_slice(page), tld);
@@ -1204,8 +1213,13 @@ static mi_segment_t* mi_segment_reclaim(mi_segment_t* segment, mi_heap_t* heap, 
       mi_assert_internal(page->next == NULL && page->prev==NULL);
       _mi_stat_decrease(&tld->stats->pages_abandoned, 1);
       segment->abandoned--;
-      // set the heap again and allow delayed free again
-      mi_page_set_heap(page, heap);
+      // set the heap again and allow heap thread delayed free again.
+      mi_heap_t* target_heap = _mi_heap_by_tag(heap, page->heap_tag);  // allow custom heaps to separate objects
+      if (target_heap == NULL) {
+        target_heap = heap;
+        _mi_error_message(EINVAL, "page with tag %u cannot be reclaimed by a heap with the same tag (using %u instead)\n", page->heap_tag, heap->tag );
+      }
+      mi_page_set_heap(page, target_heap);
       _mi_page_use_delayed_free(page, MI_USE_DELAYED_FREE, true); // override never (after heap is set)
       _mi_page_free_collect(page, false); // ensure used count is up to date
       if (mi_page_all_free(page)) {
@@ -1214,8 +1228,8 @@ static mi_segment_t* mi_segment_reclaim(mi_segment_t* segment, mi_heap_t* heap, 
       }
       else {
         // otherwise reclaim it into the heap
-        _mi_page_reclaim(heap, page);
-        if (requested_block_size == mi_page_block_size(page) && mi_page_has_any_available(page)) {
+        _mi_page_reclaim(target_heap, page);
+        if (requested_block_size == mi_page_block_size(page) && mi_page_has_any_available(page) && heap == target_heap) {
           if (right_page_reclaimed != NULL) { *right_page_reclaimed = true; }
         }
       }

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.18)
 project(libmimalloc C CXX)
 
 set(CMAKE_C_STANDARD 11)
@@ -35,6 +35,7 @@ option(MI_NO_THP            "Disable transparent huge pages support on Linux/And
 option(MI_CHECK_FULL        "Use full internal invariant checking in DEBUG mode (deprecated, use MI_DEBUG_FULL instead)" OFF)
 option(MI_USE_LIBATOMIC     "Explicitly link with -latomic (on older systems) (deprecated and detected automatically)" OFF)
 
+include(CheckLinkerFlag)    # requires cmake 3.18
 include(CheckIncludeFiles)
 include(GNUInstallDirs)
 include("cmake/mimalloc-config-version.cmake")
@@ -64,6 +65,9 @@ set(mi_sources
     src/prim/prim.c)
 
 set(mi_cflags "")
+set(mi_cflags_static "")            # extra flags for a static library build
+set(mi_cflags_dynamic "")           # extra flags for a shared-object library build
+set(mi_defines "")                   
 set(mi_libraries "")
 
 # -----------------------------------------------------------------------------
@@ -294,8 +298,7 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux|Android")
 endif()
 
 if(MI_LIBC_MUSL)
-  message(STATUS "Assume using musl libc (MI_LIBC_MUSL=ON) (this implies MI_LOCAL_DYNAMIC_TLS=ON)")
-  set(MI_LOCAL_DYNAMIC_TLS "ON")
+  message(STATUS "Assume using musl libc (MI_LIBC_MUSL=ON)")
   list(APPEND mi_defines MI_LIBC_MUSL=1)
 endif()
 
@@ -324,7 +327,14 @@ if(CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang|GNU|Intel" AND NOT CMAKE_SYSTEM
   if(MI_LOCAL_DYNAMIC_TLS)
     list(APPEND mi_cflags -ftls-model=local-dynamic)
   else()
-    list(APPEND mi_cflags -ftls-model=initial-exec)
+    if(MI_LIBC_MUSL)
+      # with musl we use local-dynamic for the static build, see issue #644
+      list(APPEND mi_cflags_static  -ftls-model=local-dynamic)
+      list(APPEND mi_cflags_dynamic -ftls-model=initial-exec)
+      message(STATUS "Use local dynamic TLS for the static build (since MI_LIBC_MUSL=ON)")
+    else()
+      list(APPEND mi_cflags -ftls-model=initial-exec)    
+    endif()
   endif()
   if(MI_OVERRIDE)
     list(APPEND mi_cflags -fno-builtin-malloc)
@@ -335,29 +345,45 @@ if (MSVC AND MSVC_VERSION GREATER_EQUAL 1914)
   list(APPEND mi_cflags /Zc:__cplusplus)
 endif()
 
+if(MINGW)
+  add_definitions(-D_WIN32_WINNT=0x600)
+endif()
+
 # extra needed libraries
+
+# we prefer -l<lib> test over `find_library` as sometimes core libraries 
+# like `libatomic` are not on the system path (see issue #898)
+function(find_link_library libname outlibname)  
+  check_linker_flag(C "-l${libname}" mi_has_lib${libname})  
+  if (mi_has_lib${libname})
+    message(VERBOSE "link library: -l${libname}")
+    set(${outlibname} ${libname} PARENT_SCOPE)    
+  else()
+    find_library(MI_LIBPATH libname)
+    if (MI_LIBPATH)
+      message(VERBOSE "link library ${libname} at ${MI_LIBPATH}")
+      set(${outlibname} ${MI_LIBPATH} PARENT_SCOPE)      
+    else()
+      message(VERBOSE "link library not found: ${libname}")
+      set(${outlibname} "" PARENT_SCOPE)
+    endif()
+  endif()
+endfunction()
+
 if(WIN32)
-  list(APPEND mi_libraries psapi shell32 user32 advapi32 bcrypt)
-  set(pc_libraries "-lpsapi -lshell32 -luser32 -ladvapi32 -lbcrypt")
+  list(APPEND mi_libraries psapi shell32 user32 advapi32 bcrypt)  
 else()
-  set(pc_libraries "")
-  find_library(MI_LIBPTHREAD pthread)
-  if (MI_LIBPTHREAD)
-    list(APPEND mi_libraries ${MI_LIBPTHREAD})
-    set(pc_libraries "${pc_libraries} -pthread")
+  find_link_library("pthread" MI_LIB_PTHREAD)
+  if(MI_LIB_PTHREAD) 
+    list(APPEND mi_libraries "${MI_LIB_PTHREAD}")
   endif()
-  find_library(MI_LIBRT rt)
-  if(MI_LIBRT)
-    list(APPEND mi_libraries ${MI_LIBRT})
-    set(pc_libraries "${pc_libraries} -lrt")
+  find_link_library("rt" MI_LIB_RT)
+  if(MI_LIB_RT) 
+    list(APPEND mi_libraries "${MI_LIB_RT}")
   endif()
-  find_library(MI_LIBATOMIC atomic)
-  if (NOT MI_LIBATOMIC AND MI_USE_LIBATOMIC)
-    set(MI_LIBATOMIC atomic)
-  endif()
-  if (MI_LIBATOMIC)
-    list(APPEND mi_libraries ${MI_LIBATOMIC})
-    set(pc_libraries "${pc_libraries} -latomic")
+  find_link_library("atomic" MI_LIB_ATOMIC)
+  if(MI_LIB_ATOMIC) 
+    list(APPEND mi_libraries "${MI_LIB_ATOMIC}")  
   endif()
 endif()
 
@@ -366,7 +392,8 @@ endif()
 # -----------------------------------------------------------------------------
 
 # dynamic/shared library and symlinks always go to /usr/local/lib equivalent
-set(mi_install_libdir   "${CMAKE_INSTALL_LIBDIR}")
+set(mi_install_libdir       "${CMAKE_INSTALL_LIBDIR}")
+set(mi_install_bindir       "${CMAKE_INSTALL_BINDIR}")
 
 # static libraries and object files, includes, and cmake config files
 # are either installed at top level, or use versioned directories for side-by-side installation (default)
@@ -432,7 +459,7 @@ if(MI_BUILD_SHARED)
   add_library(mimalloc SHARED ${mi_sources})
   set_target_properties(mimalloc PROPERTIES VERSION ${mi_version} SOVERSION ${mi_version_major} OUTPUT_NAME ${mi_basename} )
   target_compile_definitions(mimalloc PRIVATE ${mi_defines} MI_SHARED_LIB MI_SHARED_LIB_EXPORT)
-  target_compile_options(mimalloc PRIVATE ${mi_cflags})
+  target_compile_options(mimalloc PRIVATE ${mi_cflags} ${mi_cflags_dynamic})
   target_link_libraries(mimalloc PRIVATE ${mi_libraries})
   target_include_directories(mimalloc PUBLIC
       $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -450,10 +477,10 @@ if(MI_BUILD_SHARED)
     add_custom_command(TARGET mimalloc POST_BUILD
       COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_SOURCE_DIR}/bin/mimalloc-redirect${MIMALLOC_REDIRECT_SUFFIX}.dll" $<TARGET_FILE_DIR:mimalloc>
       COMMENT "Copy mimalloc-redirect${MIMALLOC_REDIRECT_SUFFIX}.dll to output directory")
-    install(FILES "$<TARGET_FILE_DIR:mimalloc>/mimalloc-redirect${MIMALLOC_REDIRECT_SUFFIX}.dll" DESTINATION ${mi_install_libdir})
+    install(FILES "$<TARGET_FILE_DIR:mimalloc>/mimalloc-redirect${MIMALLOC_REDIRECT_SUFFIX}.dll" DESTINATION ${mi_install_bindir})
   endif()
 
-  install(TARGETS mimalloc EXPORT mimalloc DESTINATION ${mi_install_libdir} LIBRARY)
+  install(TARGETS mimalloc EXPORT mimalloc ARCHIVE DESTINATION ${mi_install_libdir} RUNTIME DESTINATION ${mi_install_bindir} LIBRARY DESTINATION ${mi_install_libdir})
   install(EXPORT mimalloc DESTINATION ${mi_install_cmakedir})
 endif()
 
@@ -462,7 +489,7 @@ if (MI_BUILD_STATIC)
   add_library(mimalloc-static STATIC ${mi_sources})
   set_property(TARGET mimalloc-static PROPERTY POSITION_INDEPENDENT_CODE ON)
   target_compile_definitions(mimalloc-static PRIVATE ${mi_defines} MI_STATIC_LIB)
-  target_compile_options(mimalloc-static PRIVATE ${mi_cflags})
+  target_compile_options(mimalloc-static PRIVATE ${mi_cflags} ${mi_cflags_static})
   target_link_libraries(mimalloc-static PRIVATE ${mi_libraries})
   target_include_directories(mimalloc-static PUBLIC
       $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -494,7 +521,7 @@ if (MI_BUILD_OBJECT)
   add_library(mimalloc-obj OBJECT src/static.c)
   set_property(TARGET mimalloc-obj PROPERTY POSITION_INDEPENDENT_CODE ON)
   target_compile_definitions(mimalloc-obj PRIVATE ${mi_defines})
-  target_compile_options(mimalloc-obj PRIVATE ${mi_cflags})
+  target_compile_options(mimalloc-obj PRIVATE ${mi_cflags} ${mi_cflags_static})
   target_include_directories(mimalloc-obj PUBLIC
       $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
       $<INSTALL_INTERFACE:${mi_install_incdir}>
@@ -519,6 +546,15 @@ if (MI_BUILD_OBJECT)
 endif()
 
 # pkg-config file support
+set(pc_libraries "")
+foreach(item IN LISTS mi_libraries)
+  if(item MATCHES " *[-].*")
+    set(pc_libraries "${pc_libraries} ${item}")
+  else()
+    set(pc_libraries "${pc_libraries} -l${item}")
+  endif()
+endforeach()
+
 include("cmake/JoinPaths.cmake")
 join_paths(includedir_for_pc_file "\${prefix}" "${CMAKE_INSTALL_INCLUDEDIR}")
 join_paths(libdir_for_pc_file "\${prefix}" "${CMAKE_INSTALL_LIBDIR}")
@@ -526,6 +562,8 @@ join_paths(libdir_for_pc_file "\${prefix}" "${CMAKE_INSTALL_LIBDIR}")
 configure_file(mimalloc.pc.in mimalloc.pc @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/mimalloc.pc"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig/")
+
+
 
 # -----------------------------------------------------------------------------
 # API surface testing

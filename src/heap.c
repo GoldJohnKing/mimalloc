@@ -95,6 +95,11 @@ static bool mi_heap_page_collect(mi_heap_t* heap, mi_page_queue_t* pq, mi_page_t
   mi_assert_internal(mi_heap_page_is_valid(heap, pq, page, NULL, NULL));
   mi_collect_t collect = *((mi_collect_t*)arg_collect);
   _mi_page_free_collect(page, collect >= MI_FORCE);
+  if (collect == MI_FORCE) {
+    // note: call before a potential `_mi_page_free` as the segment may be freed if this was the last used page in that segment.
+    mi_segment_t* segment = _mi_page_segment(page);
+    _mi_segment_collect(segment, true /* force? */, &heap->tld->segments);
+  }
   if (mi_page_all_free(page)) {
     // no more used blocks, free the page.
     // note: this will free retired pages as well.
@@ -103,10 +108,6 @@ static bool mi_heap_page_collect(mi_heap_t* heap, mi_page_queue_t* pq, mi_page_t
   else if (collect == MI_ABANDON) {
     // still used blocks but the thread is done; abandon the page
     _mi_page_abandon(page, pq);
-  }
-  if (collect == MI_FORCE) {
-    mi_segment_t* segment = _mi_page_segment(page);
-    _mi_segment_collect(segment, true /* force? */, &heap->tld->segments);
   }
   return true; // don't break
 }
@@ -127,6 +128,9 @@ static void mi_heap_collect_ex(mi_heap_t* heap, mi_collect_t collect)
   const bool force = (collect >= MI_FORCE);
   _mi_deferred_free(heap, force);
 
+  // python/cpython#112532: we may be called from a thread that is not the owner of the heap
+  const bool is_main_thread = (_mi_is_main_thread() && heap->thread_id == _mi_thread_id());
+
   // note: never reclaim on collect but leave it to threads that need storage to reclaim
   const bool force_main =
     #ifdef NDEBUG
@@ -134,7 +138,7 @@ static void mi_heap_collect_ex(mi_heap_t* heap, mi_collect_t collect)
     #else
       collect >= MI_FORCE
     #endif
-      && _mi_is_main_thread() && mi_heap_is_backing(heap) && !heap->no_reclaim;
+      && is_main_thread && mi_heap_is_backing(heap) && !heap->no_reclaim;
 
   if (force_main) {
     // the main thread is abandoned (end-of-program), try to reclaim all abandoned segments.
@@ -163,7 +167,7 @@ static void mi_heap_collect_ex(mi_heap_t* heap, mi_collect_t collect)
   _mi_abandoned_collect(heap, collect == MI_FORCE /* force? */, &heap->tld->segments);
   
   // if forced, collect thread data cache on program-exit (or shared library unload)
-  if (force && _mi_is_main_thread() && mi_heap_is_backing(heap)) {
+  if (force && is_main_thread && mi_heap_is_backing(heap)) {
     _mi_thread_data_collect();  // collect thread data cache
   }
   
@@ -207,22 +211,33 @@ mi_heap_t* mi_heap_get_backing(void) {
   return bheap;
 }
 
+void _mi_heap_init(mi_heap_t* heap, mi_tld_t* tld, mi_arena_id_t arena_id, bool noreclaim, uint8_t tag) {
+  _mi_memcpy_aligned(heap, &_mi_heap_empty, sizeof(mi_heap_t));
+  heap->tld = tld;
+  heap->thread_id  = _mi_thread_id();
+  heap->arena_id   = arena_id;
+  heap->no_reclaim = noreclaim;
+  heap->tag        = tag;
+  if (heap == tld->heap_backing) {
+    _mi_random_init(&heap->random);
+  }
+  else {
+    _mi_random_split(&tld->heap_backing->random, &heap->random);
+  }
+  heap->cookie  = _mi_heap_random_next(heap) | 1;
+  heap->keys[0] = _mi_heap_random_next(heap);
+  heap->keys[1] = _mi_heap_random_next(heap);
+  // push on the thread local heaps list
+  heap->next = heap->tld->heaps;
+  heap->tld->heaps = heap;
+}
+
 mi_decl_nodiscard mi_heap_t* mi_heap_new_in_arena(mi_arena_id_t arena_id) {
   mi_heap_t* bheap = mi_heap_get_backing();
   mi_heap_t* heap = mi_heap_malloc_tp(bheap, mi_heap_t);  // todo: OS allocate in secure mode?
   if (heap == NULL) return NULL;
-  _mi_memcpy_aligned(heap, &_mi_heap_empty, sizeof(mi_heap_t));
-  heap->tld = bheap->tld;
-  heap->thread_id = _mi_thread_id();
-  heap->arena_id = arena_id;
-  _mi_random_split(&bheap->random, &heap->random);
-  heap->cookie = _mi_heap_random_next(heap) | 1;
-  heap->keys[0] = _mi_heap_random_next(heap);
-  heap->keys[1] = _mi_heap_random_next(heap);
-  heap->no_reclaim = true;  // don't reclaim abandoned pages or otherwise destroy is unsafe
-  // push on the thread local heaps list
-  heap->next = heap->tld->heaps;
-  heap->tld->heaps = heap;
+  // don't reclaim abandoned pages or otherwise destroy is unsafe  
+  _mi_heap_init(heap, bheap->tld, arena_id, true /* no reclaim */, 0 /* default tag */);
   return heap;
 }
 
@@ -280,6 +295,18 @@ static void mi_heap_free(mi_heap_t* heap) {
   mi_free(heap);
 }
 
+// return a heap on the same thread as `heap` specialized for the specified tag (if it exists)
+mi_heap_t* _mi_heap_by_tag(mi_heap_t* heap, uint8_t tag) {
+  if (heap->tag == tag) {
+    return heap;
+  }
+  for (mi_heap_t *curr = heap->tld->heaps; curr != NULL; curr = curr->next) {
+    if (curr->tag == tag) {
+      return curr;
+    }
+  }
+  return NULL;
+}
 
 /* -----------------------------------------------------------
   Heap destroy
