@@ -580,7 +580,7 @@ void mi_process_init(void) mi_attr_noexcept {
   _mi_verbose_message("process init: 0x%zx\n", _mi_thread_id());
   mi_process_setup_auto_thread_done();
 
-  CmaSetMemoryAllocatorRuntimeOptions(); // Arma 3 CMA: Set mimalloc's runtime options based on user's actual system specifications
+  CmaSetMemoryAllocatorRuntimeOptions(); // Arma 3 CMA: Fine tume mimalloc's runtime options for better performance, this must be done before _mi_os_init()
   mi_detect_cpu_features();
   _mi_os_init();
   mi_heap_main_init();
@@ -619,9 +619,6 @@ void mi_process_init(void) mi_attr_noexcept {
       mi_reserve_os_memory((size_t)ksize*MI_KiB, true /* commit? */, true /* allow large pages? */);
     }
   }
-#ifdef CMA_SCHEDULED_COLLECT
-  CmaCreateScheduledMemoryCollectorThread(); // Arma 3 CMA: Create a thread to execute mi_collect, in order to collect usused memory every once in a while
-#endif
 }
 
 // Called when the process is done (through `at_exit`)
@@ -632,9 +629,6 @@ static void mi_cdecl mi_process_done(void) {
   static bool process_done = false;
   if (process_done) return;
   process_done = true;
-#ifdef CMA_SCHEDULED_COLLECT
-  CmaTerminateScheduledMemoryCollectorThread(); // Arma 3 CMA: Terminate the usused memory collector thread
-#endif
 
   // release any thread specific resources and ensure _mi_thread_done is called on all but the main thread
   _mi_prim_thread_done_auto_done();

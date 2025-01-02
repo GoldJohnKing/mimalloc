@@ -1,7 +1,5 @@
 #include "cma_api.h"
 
-#include "cma_utils.h"
-
 #include "mimalloc.h"
 
 size_t __stdcall MemTotalCommitted(void)
@@ -21,9 +19,7 @@ size_t __stdcall MemFlushCache(size_t size)
 
 void __stdcall MemFlushCacheAll(void)
 {
-#ifndef CMA_NO_COLLECT
-	mi_collect(false);
-#endif
+	// This function does not affect actual behavior, see: https://community.bistudio.com/wiki/Arma_3:_Custom_Memory_Allocator
 }
 
 size_t __stdcall MemSize(void* mem)
@@ -58,5 +54,5 @@ void __stdcall MemFreeA(void* mem)
 
 void __stdcall EnableHugePages(void)
 {
-	CmaSetMemoryAllocatorRuntimeOptions();
+	// Huge pages and other runtime options are set once the dll is loaded, so no need to do it here
 }
