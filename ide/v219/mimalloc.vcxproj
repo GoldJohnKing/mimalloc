@@ -54,7 +54,7 @@
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <UseFullPaths>false</UseFullPaths>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;MI_SKIP_COLLECT_ON_EXIT=1;MI_SHARED_LIB;MI_SHARED_LIB_EXPORT;CMAKE_INTDIR="Release";mimalloc_EXPORTS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;MI_WIN_NOREDIRECT=1;MI_SKIP_COLLECT_ON_EXIT=1;MI_SHARED_LIB;MI_SHARED_LIB_EXPORT</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <DebugInformationFormat>
       </DebugInformationFormat>
