@@ -35,7 +35,7 @@
     <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(SolutionDir)Release\</OutDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">mimalloc.dir\Release\</IntDir>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">mimalloc_v219</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">mimalloc_v301</TargetName>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.dll</TargetExt>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</GenerateManifest>
@@ -120,6 +120,9 @@
     <ClCompile Include="..\..\src\arena.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
+    <ClCompile Include="..\..\src\arena-meta.c">
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+    </ClCompile>
     <ClCompile Include="..\..\src\bitmap.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
@@ -141,13 +144,10 @@
     <ClCompile Include="..\..\src\page.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
+    <ClCompile Include="..\..\src\page-map.c">
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+    </ClCompile>
     <ClCompile Include="..\..\src\random.c">
-      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
-    </ClCompile>
-    <ClCompile Include="..\..\src\segment.c">
-      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
-    </ClCompile>
-    <ClCompile Include="..\..\src\segment-map.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="..\..\src\stats.c">
