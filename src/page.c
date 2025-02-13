@@ -353,8 +353,6 @@ void _mi_page_free(mi_page_t* page, mi_page_queue_t* pq) {
   // no more aligned blocks in here
   mi_page_set_has_aligned(page, false);
 
-  mi_heap_t* heap = mi_page_heap(page);
-
   // remove from the page list
   // (no need to do _mi_heap_delayed_free first as all blocks are already free)
   mi_page_queue_remove(pq, page);
@@ -366,7 +364,7 @@ void _mi_page_free(mi_page_t* page, mi_page_queue_t* pq) {
   _mi_arenas_collect(false, false, heap->tld);  // allow purging
 }
 
-#define MI_MAX_RETIRE_SIZE    MI_MEDIUM_OBJ_SIZE_MAX   // should be less than size for MI_BIN_HUGE
+#define MI_MAX_RETIRE_SIZE    MI_LARGE_OBJ_SIZE_MAX   // should be less than size for MI_BIN_HUGE
 #define MI_RETIRE_CYCLES      (16)
 
 // Retire a page with no more used blocks
@@ -570,7 +568,7 @@ static mi_decl_noinline void mi_page_free_list_extend( mi_page_t* const page, co
 #if (MI_SECURE>=3)
 #define MI_MIN_EXTEND         (8*MI_SECURE) // extend at least by this many
 #else
-#define MI_MIN_EXTEND         (4)
+#define MI_MIN_EXTEND         (1)
 #endif
 
 // Extend the capacity (up to reserved) by initializing a free list
@@ -771,7 +769,7 @@ static mi_decl_noinline mi_page_t* mi_page_queue_find_free_ex(mi_heap_t* heap, m
   }
 
   if (page == NULL) {
-    _mi_heap_collect_retired(heap, false); // perhaps make a page available?
+    _mi_heap_collect_retired(heap, false); // perhaps make a page available
     page = mi_page_fresh(heap, pq);
     mi_assert_internal(page == NULL || mi_page_immediate_available(page));
     if (page == NULL && first_try) {
@@ -853,8 +851,7 @@ void mi_register_deferred_free(mi_deferred_free_fun* fn, void* arg) mi_attr_noex
   General allocation
 ----------------------------------------------------------- */
 
-// Large and huge page allocation.
-// Huge pages contain just one block, and the segment contains just that page (as `MI_SEGMENT_HUGE`).
+// Huge pages contain just one block, and the segment contains just that page.
 // Huge pages are also use if the requested alignment is very large (> MI_BLOCK_ALIGNMENT_MAX)
 // so their size is not always `> MI_LARGE_OBJ_SIZE_MAX`.
 static mi_page_t* mi_huge_page_alloc(mi_heap_t* heap, size_t size, size_t page_alignment, mi_page_queue_t* pq) {
@@ -868,6 +865,7 @@ static mi_page_t* mi_huge_page_alloc(mi_heap_t* heap, size_t size, size_t page_a
   #endif
   mi_page_t* page = mi_page_fresh_alloc(heap, pq, block_size, page_alignment);
   if (page != NULL) {
+    mi_assert_internal(mi_page_block_size(page) >= size);
     mi_assert_internal(mi_page_immediate_available(page));
     mi_assert_internal(mi_page_is_huge(page));
     mi_assert_internal(mi_page_is_singleton(page));

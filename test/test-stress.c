@@ -341,17 +341,11 @@ int main(int argc, char** argv) {
 
   // Run ITER full iterations where half the objects in the transfer buffer survive to the next round.
   srand(0x7feb352d);
-  
-  //mi_reserve_os_memory(512ULL << 20, true, true);
-
-#if !defined(NDEBUG) && !defined(USE_STD_MALLOC)
-  mi_stats_reset();
-#endif
-
+  // mi_stats_reset();
 #ifdef STRESS
-  test_stress();
+    test_stress();
 #else
-  test_leak();
+    test_leak();
 #endif
 
 #ifndef USE_STD_MALLOC

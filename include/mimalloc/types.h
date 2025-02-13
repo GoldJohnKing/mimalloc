@@ -487,7 +487,6 @@ typedef struct mi_stats_s {
   mi_stat_counter_t searches;
   mi_stat_counter_t normal_count;
   mi_stat_counter_t huge_count;
-  mi_stat_counter_t large_count;
   mi_stat_counter_t arena_count;
   mi_stat_counter_t guarded_alloc_count;
 #if MI_STAT>1
@@ -579,13 +578,8 @@ typedef struct mi_subproc_s {
 // Thread Local data
 // ------------------------------------------------------
 
-// A "span" is is an available range of slices. The span queues keep
-// track of slice spans of at most the given `slice_count` (but more than the previous size class).
-typedef struct mi_span_queue_s {
-  mi_slice_t* first;
-  mi_slice_t* last;
-  size_t      slice_count;
-} mi_span_queue_t;
+// Milliseconds as in `int64_t` to avoid overflows
+typedef int64_t  mi_msecs_t;
 
 // Thread local data
 struct mi_tld_s {

@@ -161,7 +161,6 @@ jobs:
   - script: ctest --verbose --timeout 240
     workingDirectory: $(BuildType)
     displayName: CTest
-    
 #  - upload: $(Build.SourcesDirectory)/$(BuildType)
 #    artifact: mimalloc-macos-$(BuildType)
 

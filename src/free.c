@@ -32,9 +32,7 @@ static inline void mi_free_block_local(mi_page_t* page, mi_block_t* block, bool 
   mi_check_padding(page, block);
   if (track_stats) { mi_stat_free(page, block); }
   #if (MI_DEBUG>0) && !MI_TRACK_ENABLED  && !MI_TSAN && !MI_GUARDED
-  if (!mi_page_is_huge(page)) {   // huge page content may be already decommitted
-    memset(block, MI_DEBUG_FREED, mi_page_block_size(page));
-  }
+  memset(block, MI_DEBUG_FREED, mi_page_block_size(page));
   #endif
   if (track_stats) { mi_track_free_size(block, mi_page_usable_size_of(page, block)); } // faster then mi_usable_size as we already know the page and that p is unaligned
 
@@ -496,11 +494,9 @@ void mi_stat_free(const mi_page_t* page, const mi_block_t* block) {
     mi_heap_stat_decrease(heap, normal_bins[_mi_bin(bsize)], 1);
     #endif
   }
-  else if (bsize <= MI_LARGE_OBJ_SIZE_MAX) {
-    mi_heap_stat_decrease(heap, large, bsize);
-  }
   else {
-    mi_heap_stat_decrease(heap, huge, bsize);
+    const size_t bpsize = mi_page_block_size(page);  // match stat in page.c:mi_huge_page_alloc
+    mi_heap_stat_decrease(heap, huge, bpsize);
   }
 }
 #else

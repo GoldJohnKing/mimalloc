@@ -517,7 +517,7 @@ bool _mi_os_purge_ex(void* p, size_t size, bool allow_reset, size_t stat_size)
   mi_os_stat_increase(purged, size);
 
   if (mi_option_is_enabled(mi_option_purge_decommits) &&   // should decommit?
-      !_mi_preloading())                                   // don't decommit during preloading (unsafe)
+    !_mi_preloading())                                     // don't decommit during preloading (unsafe)
   {
     bool needs_recommit = true;
     mi_os_decommit_ex(p, size, &needs_recommit, stat_size);
@@ -536,6 +536,7 @@ bool _mi_os_purge_ex(void* p, size_t size, bool allow_reset, size_t stat_size)
 bool _mi_os_purge(void* p, size_t size) {
   return _mi_os_purge_ex(p, size, true, size);
 }
+
 
 // Protect a region in memory to be not accessible.
 static  bool mi_os_protectx(void* addr, size_t size, bool protect) {

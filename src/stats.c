@@ -139,7 +139,7 @@ static void mi_stats_add(mi_stats_t* stats, const mi_stats_t* src) {
   mi_stat_add(&stats->malloc, &src->malloc, 1);
   mi_stat_add(&stats->normal, &src->normal, 1);
   mi_stat_add(&stats->huge, &src->huge, 1);
-  mi_stat_add(&stats->large, &src->large, 1);
+  mi_stat_add(&stats->giant, &src->giant, 1);
 
   mi_stat_counter_add(&stats->pages_extended, &src->pages_extended, 1);
   mi_stat_counter_add(&stats->mmap_calls, &src->mmap_calls, 1);
@@ -350,7 +350,6 @@ static void _mi_stats_print(mi_stats_t* stats, mi_output_fun* out0, void* arg0) 
   mi_stat_print(&stats->huge, "huge", (stats->huge_count.count == 0 ? 1 : -(stats->huge.allocated / stats->huge_count.count)), out, arg);
   mi_stat_count_t total = { 0,0,0,0 };
   mi_stat_add(&total, &stats->normal, 1);
-  mi_stat_add(&total, &stats->large, 1);
   mi_stat_add(&total, &stats->huge, 1);
   mi_stat_print(&total, "total", 1, out, arg);
   #endif

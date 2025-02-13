@@ -42,7 +42,6 @@ const mi_page_t _mi_page_empty = {
 
 #define MI_PAGE_EMPTY() ((mi_page_t*)&_mi_page_empty)
 
-#if (MI_SMALL_WSIZE_MAX==128)
 #if (MI_PADDING>0) && (MI_INTPTR_SIZE >= 8)
 #define MI_SMALL_PAGES_EMPTY  { MI_INIT128(MI_PAGE_EMPTY), MI_PAGE_EMPTY(), MI_PAGE_EMPTY() }
 #elif (MI_PADDING>0)
@@ -50,9 +49,7 @@ const mi_page_t _mi_page_empty = {
 #else
 #define MI_SMALL_PAGES_EMPTY  { MI_INIT128(MI_PAGE_EMPTY), MI_PAGE_EMPTY() }
 #endif
-#else
-#error "define right initialization sizes corresponding to MI_SMALL_WSIZE_MAX"
-#endif
+
 
 // Empty page queues for every bin
 #define QNULL(sz)  { NULL, NULL, (sz)*sizeof(uintptr_t) }
@@ -91,18 +88,6 @@ const mi_page_t _mi_page_empty = {
   { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, \
   { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }  \
   MI_STAT_COUNT_END_NULL()
-
-
-// Empty slice span queues for every bin
-#define SQNULL(sz)  { NULL, NULL, sz }
-#define MI_SEGMENT_SPAN_QUEUES_EMPTY \
-  { SQNULL(1), \
-    SQNULL(     1), SQNULL(     2), SQNULL(     3), SQNULL(     4), SQNULL(     5), SQNULL(     6), SQNULL(     7), SQNULL(    10), /*  8 */ \
-    SQNULL(    12), SQNULL(    14), SQNULL(    16), SQNULL(    20), SQNULL(    24), SQNULL(    28), SQNULL(    32), SQNULL(    40), /* 16 */ \
-    SQNULL(    48), SQNULL(    56), SQNULL(    64), SQNULL(    80), SQNULL(    96), SQNULL(   112), SQNULL(   128), SQNULL(   160), /* 24 */ \
-    SQNULL(   192), SQNULL(   224), SQNULL(   256), SQNULL(   320), SQNULL(   384), SQNULL(   448), SQNULL(   512), SQNULL(   640), /* 32 */ \
-    SQNULL(   768), SQNULL(   896), SQNULL(  1024) /* 35 */ }
-
 
 // --------------------------------------------------------
 // Statically allocate an empty heap as the initial
@@ -711,7 +696,7 @@ void mi_process_init(void) mi_attr_noexcept {
   if (mi_option_is_enabled(mi_option_reserve_os_memory)) {
     long ksize = mi_option_get(mi_option_reserve_os_memory);
     if (ksize > 0) {
-      mi_reserve_os_memory((size_t)ksize*MI_KiB, true /* commit? */, true /* allow large pages? */);
+      mi_reserve_os_memory((size_t)ksize*MI_KiB, true, true);
     }
   }
 }
