@@ -1,4 +1,5 @@
-*
+/*
 !.gitignore
 !mimalloc.sln
 !mimalloc.vcxproj
+!scripts

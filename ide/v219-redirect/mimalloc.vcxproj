@@ -35,7 +35,7 @@
     <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(SolutionDir)Release\</OutDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">mimalloc.dir\Release\</IntDir>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">mimalloc_v219</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">mimalloc-v219-redirect</TargetName>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.dll</TargetExt>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</GenerateManifest>
@@ -50,11 +50,11 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <Optimization>MaxSpeedHighLevel</Optimization>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <UseFullPaths>false</UseFullPaths>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;MI_WIN_NOREDIRECT=1;MI_SKIP_COLLECT_ON_EXIT=1;MI_SHARED_LIB;MI_SHARED_LIB_EXPORT</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;MI_SKIP_COLLECT_ON_EXIT=1;MI_SHARED_LIB;MI_SHARED_LIB_EXPORT;MI_MALLOC_OVERRIDE;CMAKE_INTDIR="Release";mimalloc_EXPORTS</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <DebugInformationFormat>
       </DebugInformationFormat>
@@ -77,7 +77,7 @@
       <ProxyFileName>%(Filename)_p.c</ProxyFileName>
     </Midl>
     <Link>
-      <AdditionalDependencies>..\..\bin\mimalloc-redirect.lib;psapi.lib;shell32.lib;user32.lib;advapi32.lib;bcrypt.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalDependencies>psapi.lib;shell32.lib;user32.lib;advapi32.lib;bcrypt.lib;..\..\bin\mimalloc-redirect.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <GenerateDebugInformation>false</GenerateDebugInformation>
@@ -92,15 +92,21 @@
     <ProjectReference>
       <LinkLibraryDependencies>false</LinkLibraryDependencies>
     </ProjectReference>
+    <PostBuildEvent>
+      <Command>set Patches_Dir=patches\
+set Bin_Dir=..\..\bin\
+set Scripts_Dir=scripts\
+
+rmdir /s /q "%Patches_Dir%"
+
+xcopy /y /i /s "$(TargetPath)" "%Patches_Dir%"
+xcopy /y /i /s "%Bin_Dir%mimalloc-redirect.dll" "%Patches_Dir%"
+copy /y "%Bin_Dir%minject.exe" "%Patches_Dir%mimalloc-minject.exe"
+xcopy /y /i /s "%Scripts_Dir%mimalloc-patch.bat"  "%Patches_Dir%"
+xcopy /y /i /s "%Scripts_Dir%mimalloc-readme.txt"  "%Patches_Dir%"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\src\cma\cma_api.cpp">
-      <ObjectFileName>$(IntDir)/src/cma/cma_api.cpp.obj</ObjectFileName>
-    </ClCompile>
-    <ClCompile Include="..\..\src\cma\cma_api.h">
-      <ObjectFileName>$(IntDir)/src/cma/cma_api.h.obj</ObjectFileName>
-      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
-    </ClCompile>
     <ClCompile Include="..\..\src\cma\cma_utils.cpp">
       <ObjectFileName>$(IntDir)/src/cma/cma_utils.cpp.obj</ObjectFileName>
     </ClCompile>
