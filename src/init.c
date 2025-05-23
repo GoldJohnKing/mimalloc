@@ -69,29 +69,25 @@ const mi_page_t _mi_page_empty = {
     QNULL(MI_MEDIUM_OBJ_WSIZE_MAX + 1  /* 655360, Huge queue */), \
     QNULL(MI_MEDIUM_OBJ_WSIZE_MAX + 2) /* Full queue */ }
 
-#define MI_STAT_COUNT_NULL()  {0,0,0,0}
+#define MI_STAT_COUNT_NULL()  {0,0,0}
 
 // Empty statistics
-#if MI_STAT>1
-#define MI_STAT_COUNT_END_NULL()  , { MI_STAT_COUNT_NULL(), MI_INIT32(MI_STAT_COUNT_NULL) }
-#else
-#define MI_STAT_COUNT_END_NULL()
-#endif
-
 #define MI_STATS_NULL  \
-  MI_STAT_COUNT_NULL(), MI_STAT_COUNT_NULL(), \
-  MI_STAT_COUNT_NULL(), MI_STAT_COUNT_NULL(), \
-  MI_STAT_COUNT_NULL(), MI_STAT_COUNT_NULL(), \
-  MI_STAT_COUNT_NULL(), MI_STAT_COUNT_NULL(), \
-  MI_STAT_COUNT_NULL(), MI_STAT_COUNT_NULL(), \
-  MI_STAT_COUNT_NULL(), MI_STAT_COUNT_NULL(), \
-  MI_STAT_COUNT_NULL(), MI_STAT_COUNT_NULL(), \
-  MI_STAT_COUNT_NULL(), \
-  { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, \
-  { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, \
-  { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 }, \
-  { 0, 0 }, { 0, 0 } \
-  MI_STAT_COUNT_END_NULL()
+  MI_STAT_COUNT_NULL(), MI_STAT_COUNT_NULL(), MI_STAT_COUNT_NULL(), MI_STAT_COUNT_NULL(), \
+  MI_STAT_COUNT_NULL(), MI_STAT_COUNT_NULL(), MI_STAT_COUNT_NULL(), MI_STAT_COUNT_NULL(), \
+  MI_STAT_COUNT_NULL(), MI_STAT_COUNT_NULL(), MI_STAT_COUNT_NULL(), \
+  { 0 }, { 0 }, { 0 }, { 0 }, \
+  { 0 }, { 0 }, { 0 }, { 0 }, \
+  \
+  { 0 }, { 0 }, { 0 }, { 0 }, { 0 }, \
+  MI_INIT4(MI_STAT_COUNT_NULL), \
+  { 0 }, { 0 }, { 0 }, { 0 },  \
+  \
+  { MI_INIT4(MI_STAT_COUNT_NULL) }, \
+  { { 0 }, { 0 }, { 0 }, { 0 } }, \
+  \
+  { MI_INIT74(MI_STAT_COUNT_NULL) }, \
+  { MI_INIT74(MI_STAT_COUNT_NULL) }
 
 
 // Empty slice span queues for every bin
@@ -124,6 +120,7 @@ mi_decl_cache_align const mi_heap_t _mi_heap_empty = {
   { {0}, {0}, 0, true }, // random
   0,                // page count
   MI_BIN_FULL, 0,   // page retired min/max
+  0, 0,             // generic count
   NULL,             // next
   false,            // can reclaim
   0,                // tag
@@ -143,7 +140,7 @@ mi_decl_cache_align static const mi_tld_t tld_empty = {
   false,
   NULL, NULL,
   { MI_SEGMENT_SPAN_QUEUES_EMPTY, 0, 0, 0, 0, 0, &mi_subproc_default, tld_empty_stats }, // segments
-  { MI_STATS_NULL }       // stats
+  { MI_STAT_VERSION, MI_STATS_NULL }       // stats
 };
 
 mi_threadid_t _mi_thread_id(void) mi_attr_noexcept {
@@ -153,13 +150,13 @@ mi_threadid_t _mi_thread_id(void) mi_attr_noexcept {
 // the thread-local default heap for allocation
 mi_decl_thread mi_heap_t* _mi_heap_default = (mi_heap_t*)&_mi_heap_empty;
 
-extern mi_heap_t _mi_heap_main;
+extern mi_decl_hidden mi_heap_t _mi_heap_main;
 
 static mi_decl_cache_align mi_tld_t tld_main = {
   0, false,
   &_mi_heap_main, & _mi_heap_main,
   { MI_SEGMENT_SPAN_QUEUES_EMPTY, 0, 0, 0, 0, 0, &mi_subproc_default, &tld_main.stats }, // segments
-  { MI_STATS_NULL }       // stats
+  { MI_STAT_VERSION, MI_STATS_NULL }       // stats
 };
 
 mi_decl_cache_align mi_heap_t _mi_heap_main = {
@@ -172,6 +169,7 @@ mi_decl_cache_align mi_heap_t _mi_heap_main = {
   { {0x846ca68b}, {0}, 0, true },  // random
   0,                // page count
   MI_BIN_FULL, 0,   // page retired min/max
+  0, 0,             // generic count
   NULL,             // next heap
   false,            // can reclaim
   0,                // tag
@@ -184,7 +182,7 @@ mi_decl_cache_align mi_heap_t _mi_heap_main = {
 
 bool _mi_process_is_initialized = false;  // set to `true` in `mi_process_init`.
 
-mi_stats_t _mi_stats_main = { MI_STATS_NULL };
+mi_stats_t _mi_stats_main = { MI_STAT_VERSION, MI_STATS_NULL };
 
 #if MI_GUARDED
 mi_decl_export void mi_heap_guarded_set_sample_rate(mi_heap_t* heap, size_t sample_rate, size_t seed) {
@@ -571,6 +569,9 @@ void _mi_heap_set_default_direct(mi_heap_t* heap)  {
   _mi_prim_thread_associate_default_heap(heap);
 }
 
+void mi_thread_set_in_threadpool(void) mi_attr_noexcept {
+  // nothing
+}
 
 // --------------------------------------------------------
 // Run functions on process init/done, and thread init/done
@@ -580,6 +581,11 @@ static bool os_preloading = true;    // true until this module is initialized
 // Returns true if this module has not been initialized; Don't use C runtime routines until it returns false.
 bool mi_decl_noinline _mi_preloading(void) {
   return os_preloading;
+}
+
+// Returns true if mimalloc was redirected
+mi_decl_nodiscard bool mi_is_redirected(void) mi_attr_noexcept {
+  return _mi_is_redirected();
 }
 
 // Called once by the process loader from `src/prim/prim.c`
@@ -618,7 +624,7 @@ static void mi_detect_cpu_features(void) {
   int32_t cpu_info[4];
   __cpuid(cpu_info, 7);
   _mi_cpu_has_fsrm = ((cpu_info[3] & (1 << 4)) != 0); // bit 4 of EDX : see <https://en.wikipedia.org/wiki/CPUID#EAX=7,_ECX=0:_Extended_Features>
-  _mi_cpu_has_erms = ((cpu_info[2] & (1 << 9)) != 0); // bit 9 of ECX : see <https://en.wikipedia.org/wiki/CPUID#EAX=7,_ECX=0:_Extended_Features>
+  _mi_cpu_has_erms = ((cpu_info[1] & (1 << 9)) != 0); // bit 9 of EBX : see <https://en.wikipedia.org/wiki/CPUID#EAX=7,_ECX=0:_Extended_Features>
 }
 #else
 static void mi_detect_cpu_features(void) {
@@ -642,14 +648,6 @@ void mi_process_init(void) mi_attr_noexcept {
   mi_detect_cpu_features();
   _mi_os_init();
   mi_heap_main_init();
-  #if MI_DEBUG
-  _mi_verbose_message("debug level : %d\n", MI_DEBUG);
-  #endif
-  _mi_verbose_message("secure level: %d\n", MI_SECURE);
-  _mi_verbose_message("mem tracking: %s\n", MI_TRACK_TOOL);
-  #if MI_TSAN
-  _mi_verbose_message("thread santizer enabled\n");
-  #endif
   mi_thread_init();
 
   #if defined(_WIN32)

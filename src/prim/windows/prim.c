@@ -62,6 +62,9 @@ static PGetNumaProcessorNodeEx      pGetNumaProcessorNodeEx = NULL;
 static PGetNumaNodeProcessorMaskEx  pGetNumaNodeProcessorMaskEx = NULL;
 static PGetNumaProcessorNode        pGetNumaProcessorNode = NULL;
 
+// Available after Windows XP
+typedef BOOL (__stdcall *PGetPhysicallyInstalledSystemMemory)( PULONGLONG TotalMemoryInKilobytes );
+
 //---------------------------------------------
 // Enable large page support dynamically (if possible)
 //---------------------------------------------
@@ -120,16 +123,10 @@ void _mi_prim_mem_init( mi_os_mem_config_t* config )
   if (si.dwAllocationGranularity > 0) { config->alloc_granularity = si.dwAllocationGranularity; }
   // get virtual address bits
   if ((uintptr_t)si.lpMaximumApplicationAddress > 0) {
-    const size_t vbits = MI_INTPTR_BITS - mi_clz((uintptr_t)si.lpMaximumApplicationAddress);
+    const size_t vbits = MI_SIZE_BITS - mi_clz((uintptr_t)si.lpMaximumApplicationAddress);
     config->virtual_address_bits = vbits;
   }
-  // get physical memory
-  ULONGLONG memInKiB = 0;
-  if (GetPhysicallyInstalledSystemMemory(&memInKiB)) {
-    if (memInKiB > 0 && memInKiB < (SIZE_MAX / MI_KiB)) {
-      config->physical_memory = memInKiB * MI_KiB;
-    }
-  }
+
   // get the VirtualAlloc2 function
   HINSTANCE  hDll;
   hDll = LoadLibrary(TEXT("kernelbase.dll"));
@@ -152,8 +149,19 @@ void _mi_prim_mem_init( mi_os_mem_config_t* config )
     pGetNumaProcessorNodeEx = (PGetNumaProcessorNodeEx)(void (*)(void))GetProcAddress(hDll, "GetNumaProcessorNodeEx");
     pGetNumaNodeProcessorMaskEx = (PGetNumaNodeProcessorMaskEx)(void (*)(void))GetProcAddress(hDll, "GetNumaNodeProcessorMaskEx");
     pGetNumaProcessorNode = (PGetNumaProcessorNode)(void (*)(void))GetProcAddress(hDll, "GetNumaProcessorNode");
+    // Get physical memory (not available on XP, so check dynamically)
+    PGetPhysicallyInstalledSystemMemory pGetPhysicallyInstalledSystemMemory = (PGetPhysicallyInstalledSystemMemory)(void (*)(void))GetProcAddress(hDll,"GetPhysicallyInstalledSystemMemory");
+    if (pGetPhysicallyInstalledSystemMemory != NULL) {
+      ULONGLONG memInKiB = 0;
+      if ((*pGetPhysicallyInstalledSystemMemory)(&memInKiB)) {
+        if (memInKiB > 0 && memInKiB <= SIZE_MAX) {
+          config->physical_memory_in_kib = (size_t)memInKiB;
+        }
+      }
+    }
     FreeLibrary(hDll);
   }
+  // Enable large/huge OS page support?
   if (mi_option_is_enabled(mi_option_allow_large_os_pages) || mi_option_is_enabled(mi_option_reserve_huge_os_pages)) {
     win_enable_large_os_pages(&config->large_page_size);
   }
@@ -173,7 +181,7 @@ int _mi_prim_free(void* addr, size_t size ) {
     // In mi_os_mem_alloc_aligned the fallback path may have returned a pointer inside
     // the memory region returned by VirtualAlloc; in that case we need to free using
     // the start of the region.
-    MEMORY_BASIC_INFORMATION info = { 0 };
+    MEMORY_BASIC_INFORMATION info; _mi_memzero_var(info);
     VirtualQuery(addr, &info, sizeof(info));
     if (info.AllocationBase < addr && ((uint8_t*)addr - (uint8_t*)info.AllocationBase) < (ptrdiff_t)MI_SEGMENT_SIZE) {
       errcode = 0;
@@ -635,7 +643,7 @@ static void NTAPI mi_win_main(PVOID module, DWORD reason, LPVOID reserved) {
   }
   else if (reason==DLL_THREAD_DETACH && !_mi_is_redirected()) {
     _mi_thread_done(NULL);
-  }    
+  }
 }
 
 
@@ -643,7 +651,7 @@ static void NTAPI mi_win_main(PVOID module, DWORD reason, LPVOID reserved) {
   #define MI_PRIM_HAS_PROCESS_ATTACH  1
 
   // Windows DLL: easy to hook into process_init and thread_done
-  __declspec(dllexport) BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved) {
+  BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved) {
     mi_win_main((PVOID)inst,reason,reserved);
     return TRUE;
   }

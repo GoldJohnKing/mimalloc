@@ -16,9 +16,6 @@
     <ClCompile Include="..\..\src\arena.c">
       <Filter>Sources</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\src\arena-abandoned.c">
-      <Filter>Sources</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\src\bitmap.c">
       <Filter>Sources</Filter>
     </ClCompile>
@@ -64,6 +61,9 @@
     <ClCompile Include="..\..\src\stats.c">
       <Filter>Sources</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\arena-abandon.c">
+      <Filter>Sources</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\include\mimalloc\atomic.h">
@@ -91,6 +91,9 @@
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="..\..\include\mimalloc\prim.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\include\mimalloc-stats.h">
       <Filter>Headers</Filter>
     </ClInclude>
   </ItemGroup>

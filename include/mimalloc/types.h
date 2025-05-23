@@ -22,6 +22,7 @@ terms of the MIT license. A copy of the license can be found in the file
 // --------------------------------------------------------------------------
 
 
+#include <mimalloc-stats.h>
 #include <stddef.h>   // ptrdiff_t
 #include <stdint.h>   // uintptr_t, uint16_t, etc
 #include "atomic.h"   // _Atomic
@@ -66,10 +67,10 @@ terms of the MIT license. A copy of the license can be found in the file
 // #define MI_DEBUG 2  // + internal assertion checks
 // #define MI_DEBUG 3  // + extensive internal invariant checking (cmake -DMI_DEBUG_FULL=ON)
 #if !defined(MI_DEBUG)
-#if !defined(NDEBUG) || defined(_DEBUG)
-#define MI_DEBUG 2
-#else
+#if defined(MI_BUILD_RELEASE) || defined(NDEBUG)
 #define MI_DEBUG 0
+#else
+#define MI_DEBUG 2
 #endif
 #endif
 
@@ -197,14 +198,16 @@ typedef int32_t  mi_ssize_t;
 #define MI_SMALL_PAGE_SIZE                (MI_ZU(1)<<MI_SMALL_PAGE_SHIFT)
 #define MI_MEDIUM_PAGE_SIZE               (MI_ZU(1)<<MI_MEDIUM_PAGE_SHIFT)
 
-#define MI_SMALL_OBJ_SIZE_MAX             (MI_SMALL_PAGE_SIZE/4)   // 8KiB on 64-bit
-#define MI_MEDIUM_OBJ_SIZE_MAX            (MI_MEDIUM_PAGE_SIZE/4)  // 128KiB on 64-bit
+#define MI_SMALL_OBJ_SIZE_MAX             (MI_SMALL_PAGE_SIZE/8)   // 8 KiB on 64-bit
+#define MI_MEDIUM_OBJ_SIZE_MAX            (MI_MEDIUM_PAGE_SIZE/8)  // 64 KiB on 64-bit
 #define MI_MEDIUM_OBJ_WSIZE_MAX           (MI_MEDIUM_OBJ_SIZE_MAX/MI_INTPTR_SIZE)
-#define MI_LARGE_OBJ_SIZE_MAX             (MI_SEGMENT_SIZE/2)      // 16MiB on 64-bit
+#define MI_LARGE_OBJ_SIZE_MAX             (MI_SEGMENT_SIZE/2)      // 16 MiB on 64-bit
 #define MI_LARGE_OBJ_WSIZE_MAX            (MI_LARGE_OBJ_SIZE_MAX/MI_INTPTR_SIZE)
 
 // Maximum number of size classes. (spaced exponentially in 12.5% increments)
-#define MI_BIN_HUGE  (73U)
+#if MI_BIN_HUGE != 73U
+#error "mimalloc internal: expecting 73 bins"
+#endif
 
 #if (MI_MEDIUM_OBJ_WSIZE_MAX >= 655360)
 #error "mimalloc internal: define more bins"
@@ -559,6 +562,8 @@ struct mi_heap_s {
   size_t                page_count;                          // total number of pages in the `pages` queues.
   size_t                page_retired_min;                    // smallest retired index (retired pages are fully free, but still in the page queues)
   size_t                page_retired_max;                    // largest retired index into the `pages` array.
+  long                  generic_count;                       // how often is `_mi_malloc_generic` called?
+  long                  generic_collect_count;               // how often is `_mi_malloc_generic` called without collecting?
   mi_heap_t*            next;                                // list of heaps per thread
   bool                  no_reclaim;                          // `true` if this heap should not reclaim abandoned pages
   uint8_t               tag;                                 // custom tag, can be used for separating heaps based on the object types
@@ -571,6 +576,60 @@ struct mi_heap_s {
   #endif
   mi_page_t*            pages_free_direct[MI_PAGES_DIRECT];  // optimize: array where every entry points a page with possibly free blocks in the corresponding queue for that size.
   mi_page_queue_t       pages[MI_BIN_FULL + 1];              // queue of pages for each size class (or "bin")
+};
+
+
+// ------------------------------------------------------
+// Sub processes do not reclaim or visit segments
+// from other sub processes. These are essentially the
+// static variables of a process.
+// ------------------------------------------------------
+
+struct mi_subproc_s {
+  _Atomic(size_t)    abandoned_count;         // count of abandoned segments for this sub-process
+  _Atomic(size_t)    abandoned_os_list_count; // count of abandoned segments in the os-list
+  mi_lock_t          abandoned_os_lock;       // lock for the abandoned os segment list (outside of arena's) (this lock protect list operations)
+  mi_lock_t          abandoned_os_visit_lock; // ensure only one thread per subproc visits the abandoned os list
+  mi_segment_t*      abandoned_os_list;       // doubly-linked list of abandoned segments outside of arena's (in OS allocated memory)
+  mi_segment_t*      abandoned_os_list_tail;  // the tail-end of the list
+  mi_memid_t         memid;                   // provenance of this memory block
+};
+
+
+// ------------------------------------------------------
+// Thread Local data
+// ------------------------------------------------------
+
+// A "span" is is an available range of slices. The span queues keep
+// track of slice spans of at most the given `slice_count` (but more than the previous size class).
+typedef struct mi_span_queue_s {
+  mi_slice_t* first;
+  mi_slice_t* last;
+  size_t      slice_count;
+} mi_span_queue_t;
+
+#define MI_SEGMENT_BIN_MAX (35)     // 35 == mi_segment_bin(MI_SLICES_PER_SEGMENT)
+
+// Segments thread local data
+typedef struct mi_segments_tld_s {
+  mi_span_queue_t     spans[MI_SEGMENT_BIN_MAX+1];  // free slice spans inside segments
+  size_t              count;        // current number of segments;
+  size_t              peak_count;   // peak number of segments
+  size_t              current_size; // current size of all segments
+  size_t              peak_size;    // peak size of all segments
+  size_t              reclaim_count;// number of reclaimed (abandoned) segments
+  mi_subproc_t*       subproc;      // sub-process this thread belongs to.
+  mi_stats_t*         stats;        // points to tld stats
+} mi_segments_tld_t;
+
+// Thread local data
+struct mi_tld_s {
+  unsigned long long  heartbeat;     // monotonic heartbeat count
+  bool                recurse;       // true if deferred was called; used to prevent infinite recursion.
+  mi_heap_t*          heap_backing;  // backing heap of this thread (cannot be deleted)
+  mi_heap_t*          heaps;         // list of heaps in this thread (so we can abandon all when the thread terminates)
+  mi_segments_tld_t   segments;      // segment tld
+  mi_stats_t          stats;         // statistics
 };
 
 
@@ -609,10 +668,10 @@ void _mi_assert_fail(const char* assertion, const char* fname, unsigned int line
 #define mi_assert_expensive(x)
 #endif
 
+
 // ------------------------------------------------------
 // Statistics
 // ------------------------------------------------------
-
 #ifndef MI_STAT
 #if (MI_DEBUG>0)
 #define MI_STAT 2
@@ -621,59 +680,9 @@ void _mi_assert_fail(const char* assertion, const char* fname, unsigned int line
 #endif
 #endif
 
-typedef struct mi_stat_count_s {
-  int64_t allocated;
-  int64_t freed;
-  int64_t peak;
-  int64_t current;
-} mi_stat_count_t;
-
-typedef struct mi_stat_counter_s {
-  int64_t total;
-  int64_t count;
-} mi_stat_counter_t;
-
-typedef struct mi_stats_s {
-  mi_stat_count_t segments;
-  mi_stat_count_t pages;
-  mi_stat_count_t reserved;
-  mi_stat_count_t committed;
-  mi_stat_count_t reset;
-  mi_stat_count_t purged;
-  mi_stat_count_t page_committed;
-  mi_stat_count_t segments_abandoned;
-  mi_stat_count_t pages_abandoned;
-  mi_stat_count_t threads;
-  mi_stat_count_t normal;
-  mi_stat_count_t huge;
-  mi_stat_count_t large;
-  mi_stat_count_t malloc;
-  mi_stat_count_t segments_cache;
-  mi_stat_counter_t pages_extended;
-  mi_stat_counter_t mmap_calls;
-  mi_stat_counter_t commit_calls;
-  mi_stat_counter_t reset_calls;
-  mi_stat_counter_t purge_calls;
-  mi_stat_counter_t page_no_retire;
-  mi_stat_counter_t searches;
-  mi_stat_counter_t normal_count;
-  mi_stat_counter_t huge_count;
-  mi_stat_counter_t large_count;
-  mi_stat_counter_t arena_count;
-  mi_stat_counter_t arena_crossover_count;
-  mi_stat_counter_t arena_rollback_count;
-  mi_stat_counter_t guarded_alloc_count;
-#if MI_STAT>1
-  mi_stat_count_t normal_bins[MI_BIN_HUGE+1];
-#endif
-} mi_stats_t;
-
-
 // add to stat keeping track of the peak
 void _mi_stat_increase(mi_stat_count_t* stat, size_t amount);
 void _mi_stat_decrease(mi_stat_count_t* stat, size_t amount);
-// adjust stat in special cases to compensate for double counting
-void _mi_stat_adjust_increase(mi_stat_count_t* stat, size_t amount);
 void _mi_stat_adjust_decrease(mi_stat_count_t* stat, size_t amount);
 // counters can just be increased
 void _mi_stat_counter_increase(mi_stat_counter_t* stat, size_t amount);
@@ -681,71 +690,18 @@ void _mi_stat_counter_increase(mi_stat_counter_t* stat, size_t amount);
 #if (MI_STAT)
 #define mi_stat_increase(stat,amount)         _mi_stat_increase( &(stat), amount)
 #define mi_stat_decrease(stat,amount)         _mi_stat_decrease( &(stat), amount)
-#define mi_stat_counter_increase(stat,amount) _mi_stat_counter_increase( &(stat), amount)
-#define mi_stat_adjust_increase(stat,amount)  _mi_stat_adjust_increase( &(stat), amount)
 #define mi_stat_adjust_decrease(stat,amount)  _mi_stat_adjust_decrease( &(stat), amount)
+#define mi_stat_counter_increase(stat,amount) _mi_stat_counter_increase( &(stat), amount)
 #else
 #define mi_stat_increase(stat,amount)         ((void)0)
 #define mi_stat_decrease(stat,amount)         ((void)0)
-#define mi_stat_counter_increase(stat,amount) ((void)0)
-#define mi_stat_adjuct_increase(stat,amount)  ((void)0)
 #define mi_stat_adjust_decrease(stat,amount)  ((void)0)
+#define mi_stat_counter_increase(stat,amount) ((void)0)
 #endif
 
 #define mi_heap_stat_counter_increase(heap,stat,amount)  mi_stat_counter_increase( (heap)->tld->stats.stat, amount)
 #define mi_heap_stat_increase(heap,stat,amount)  mi_stat_increase( (heap)->tld->stats.stat, amount)
 #define mi_heap_stat_decrease(heap,stat,amount)  mi_stat_decrease( (heap)->tld->stats.stat, amount)
-
-
-// ------------------------------------------------------
-// Sub processes do not reclaim or visit segments
-// from other sub processes
-// ------------------------------------------------------
-
-struct mi_subproc_s {
-  _Atomic(size_t)    abandoned_count;         // count of abandoned segments for this sub-process
-  _Atomic(size_t)    abandoned_os_list_count; // count of abandoned segments in the os-list
-  mi_lock_t          abandoned_os_lock;       // lock for the abandoned os segment list (outside of arena's) (this lock protect list operations)
-  mi_lock_t          abandoned_os_visit_lock; // ensure only one thread per subproc visits the abandoned os list
-  mi_segment_t*      abandoned_os_list;       // doubly-linked list of abandoned segments outside of arena's (in OS allocated memory)
-  mi_segment_t*      abandoned_os_list_tail;  // the tail-end of the list
-  mi_memid_t         memid;                   // provenance of this memory block
-};
-
-// ------------------------------------------------------
-// Thread Local data
-// ------------------------------------------------------
-
-// A "span" is is an available range of slices. The span queues keep
-// track of slice spans of at most the given `slice_count` (but more than the previous size class).
-typedef struct mi_span_queue_s {
-  mi_slice_t* first;
-  mi_slice_t* last;
-  size_t      slice_count;
-} mi_span_queue_t;
-
-#define MI_SEGMENT_BIN_MAX (35)     // 35 == mi_segment_bin(MI_SLICES_PER_SEGMENT)
-
-// Segments thread local data
-typedef struct mi_segments_tld_s {
-  mi_span_queue_t     spans[MI_SEGMENT_BIN_MAX+1];  // free slice spans inside segments
-  size_t              count;        // current number of segments;
-  size_t              peak_count;   // peak number of segments
-  size_t              current_size; // current size of all segments
-  size_t              peak_size;    // peak size of all segments
-  size_t              reclaim_count;// number of reclaimed (abandoned) segments
-  mi_subproc_t*       subproc;      // sub-process this thread belongs to.
-  mi_stats_t*         stats;        // points to tld stats
-} mi_segments_tld_t;
-
-// Thread local data
-struct mi_tld_s {
-  unsigned long long  heartbeat;     // monotonic heartbeat count
-  bool                recurse;       // true if deferred was called; used to prevent infinite recursion.
-  mi_heap_t*          heap_backing;  // backing heap of this thread (cannot be deleted)
-  mi_heap_t*          heaps;         // list of heaps in this thread (so we can abandon all when the thread terminates)
-  mi_segments_tld_t   segments;      // segment tld
-  mi_stats_t          stats;         // statistics
-};
+#define mi_heap_stat_adjust_decrease(heap,stat,amount)  mi_stat_adjust_decrease( (heap)->tld->stats.stat, amount)
 
 #endif

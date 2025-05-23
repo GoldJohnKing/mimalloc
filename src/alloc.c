@@ -30,6 +30,7 @@ terms of the MIT license. A copy of the license can be found in the file
 // Note: in release mode the (inlined) routine is about 7 instructions with a single test.
 extern inline void* _mi_page_malloc_zero(mi_heap_t* heap, mi_page_t* page, size_t size, bool zero) mi_attr_noexcept
 {
+  mi_assert_internal(size >= MI_PADDING_SIZE);
   mi_assert_internal(page->block_size == 0 /* empty heap */ || mi_page_block_size(page) >= size);
 
   // check the free list
@@ -83,11 +84,12 @@ extern inline void* _mi_page_malloc_zero(mi_heap_t* heap, mi_page_t* page, size_
   #if (MI_STAT>0)
   const size_t bsize = mi_page_usable_block_size(page);
   if (bsize <= MI_MEDIUM_OBJ_SIZE_MAX) {
-    mi_heap_stat_increase(heap, normal, bsize);
-    mi_heap_stat_counter_increase(heap, normal_count, 1);
+    mi_heap_stat_increase(heap, malloc_normal, bsize);
+    mi_heap_stat_counter_increase(heap, malloc_normal_count, 1);
     #if (MI_STAT>1)
     const size_t bin = _mi_bin(bsize);
-    mi_heap_stat_increase(heap, normal_bins[bin], 1);
+    mi_heap_stat_increase(heap, malloc_bins[bin], 1);
+    mi_heap_stat_increase(heap, malloc_requested, size - MI_PADDING_SIZE);
     #endif
   }
   #endif
@@ -146,12 +148,6 @@ static inline mi_decl_restrict void* mi_heap_malloc_small_zero(mi_heap_t* heap, 
   void* const p = _mi_page_malloc_zero(heap, page, size + MI_PADDING_SIZE, zero);
   mi_track_malloc(p,size,zero);
 
-  #if MI_STAT>1
-  if (p != NULL) {
-    if (!mi_heap_is_initialized(heap)) { heap = mi_prim_get_default_heap(); }
-    mi_heap_stat_increase(heap, malloc, mi_usable_size(p));
-  }
-  #endif
   #if MI_DEBUG>3
   if (p != NULL && zero) {
     mi_assert_expensive(mi_mem_is_zero(p, size));
@@ -188,12 +184,6 @@ extern inline void* _mi_heap_malloc_zero_ex(mi_heap_t* heap, size_t size, bool z
     void* const p = _mi_malloc_generic(heap, size + MI_PADDING_SIZE, zero, huge_alignment);  // note: size can overflow but it is detected in malloc_generic
     mi_track_malloc(p,size,zero);
 
-    #if MI_STAT>1
-    if (p != NULL) {
-      if (!mi_heap_is_initialized(heap)) { heap = mi_prim_get_default_heap(); }
-      mi_heap_stat_increase(heap, malloc, mi_usable_size(p));
-    }
-    #endif
     #if MI_DEBUG>3
     if (p != NULL && zero) {
       mi_assert_expensive(mi_mem_is_zero(p, size));
@@ -640,7 +630,7 @@ static void* mi_block_ptr_set_guarded(mi_block_t* block, size_t obj_size) {
     // give up to place it right in front of the guard page if the offset is too large for unalignment
     offset = MI_BLOCK_ALIGNMENT_MAX;
   }
-  void* p = (uint8_t*)block + offset;  
+  void* p = (uint8_t*)block + offset;
   mi_track_align(block, p, offset, obj_size);
   mi_track_mem_defined(block, sizeof(mi_block_t));
   return p;
@@ -662,13 +652,14 @@ mi_decl_restrict void* _mi_heap_malloc_guarded(mi_heap_t* heap, size_t size, boo
   void* const p   = mi_block_ptr_set_guarded(block, obj_size);
 
   // stats
-  mi_track_malloc(p, size, zero);  
+  mi_track_malloc(p, size, zero);
   if (p != NULL) {
     if (!mi_heap_is_initialized(heap)) { heap = mi_prim_get_default_heap(); }
     #if MI_STAT>1
-    mi_heap_stat_increase(heap, malloc, mi_usable_size(p));
+    mi_heap_stat_adjust_decrease(heap, malloc_requested, req_size);
+    mi_heap_stat_increase(heap, malloc_requested, size);
     #endif
-    _mi_stat_counter_increase(&heap->tld->stats.guarded_alloc_count, 1);
+    _mi_stat_counter_increase(&heap->tld->stats.malloc_guarded_count, 1);
   }
   #if MI_DEBUG>3
   if (p != NULL && zero) {

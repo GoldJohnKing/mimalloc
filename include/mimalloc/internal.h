@@ -64,8 +64,8 @@ terms of the MIT license. A copy of the license can be found in the file
 
 // "libc.c"
 #include    <stdarg.h>
-void        _mi_vsnprintf(char* buf, size_t bufsize, const char* fmt, va_list args);
-void        _mi_snprintf(char* buf, size_t buflen, const char* fmt, ...);
+int         _mi_vsnprintf(char* buf, size_t bufsize, const char* fmt, va_list args);
+int         _mi_snprintf(char* buf, size_t buflen, const char* fmt, ...);
 char        _mi_toupper(char c);
 int         _mi_strnicmp(const char* s, const char* t, size_t n);
 void        _mi_strlcpy(char* dest, const char* src, size_t dest_size);
@@ -77,6 +77,7 @@ bool        _mi_getenv(const char* name, char* result, size_t result_size);
 // "options.c"
 void        _mi_fputs(mi_output_fun* out, void* arg, const char* prefix, const char* message);
 void        _mi_fprintf(mi_output_fun* out, void* arg, const char* fmt, ...);
+void        _mi_message(const char* fmt, ...);
 void        _mi_warning_message(const char* fmt, ...);
 void        _mi_verbose_message(const char* fmt, ...);
 void        _mi_trace_message(const char* fmt, ...);
@@ -126,6 +127,7 @@ bool        _mi_os_has_virtual_reserve(void);
 
 bool        _mi_os_reset(void* addr, size_t size);
 bool        _mi_os_commit(void* p, size_t size, bool* is_zero);
+bool        _mi_os_commit_ex(void* addr, size_t size, bool* is_zero, size_t stat_size);
 bool        _mi_os_decommit(void* addr, size_t size);
 bool        _mi_os_protect(void* addr, size_t size);
 bool        _mi_os_unprotect(void* addr, size_t size);
@@ -215,8 +217,8 @@ void        _mi_deferred_free(mi_heap_t* heap, bool force);
 void        _mi_page_free_collect(mi_page_t* page,bool force);
 void        _mi_page_reclaim(mi_heap_t* heap, mi_page_t* page);   // callback from segments
 
-size_t      _mi_bin_size(uint8_t bin);           // for stats
-uint8_t     _mi_bin(size_t size);                // for stats
+size_t      _mi_bin_size(size_t bin);            // for stats
+size_t      _mi_bin(size_t size);                // for stats
 
 // "heap.c"
 void        _mi_heap_init(mi_heap_t* heap, mi_tld_t* tld, mi_arena_id_t arena_id, bool noreclaim, uint8_t tag);
@@ -313,7 +315,7 @@ bool        _mi_page_is_valid(mi_page_t* page);
 #define MI_INIT64(x)  MI_INIT32(x),MI_INIT32(x)
 #define MI_INIT128(x) MI_INIT64(x),MI_INIT64(x)
 #define MI_INIT256(x) MI_INIT128(x),MI_INIT128(x)
-
+#define MI_INIT74(x)  MI_INIT64(x),MI_INIT8(x),x(),x()
 
 #include <string.h>
 // initialize a local variable to zero; use memset as compilers optimize constant sized memset's
@@ -922,21 +924,21 @@ static inline size_t _mi_os_numa_node_count(void) {
 
 #include <limits.h>       // LONG_MAX
 #define MI_HAVE_FAST_BITSCAN
-static inline size_t mi_clz(uintptr_t x) {
-  if (x==0) return MI_INTPTR_BITS;
-#if (INTPTR_MAX == LONG_MAX)
-  return __builtin_clzl(x);
-#else
-  return __builtin_clzll(x);
-#endif
+static inline size_t mi_clz(size_t x) {
+  if (x==0) return MI_SIZE_BITS;
+  #if (SIZE_MAX == ULONG_MAX)
+    return __builtin_clzl(x);
+  #else
+    return __builtin_clzll(x);
+  #endif
 }
-static inline size_t mi_ctz(uintptr_t x) {
-  if (x==0) return MI_INTPTR_BITS;
-#if (INTPTR_MAX == LONG_MAX)
-  return __builtin_ctzl(x);
-#else
-  return __builtin_ctzll(x);
-#endif
+static inline size_t mi_ctz(size_t x) {
+  if (x==0) return MI_SIZE_BITS;
+  #if (SIZE_MAX == ULONG_MAX)
+    return __builtin_ctzl(x);
+  #else
+    return __builtin_ctzll(x);
+  #endif
 }
 
 #elif defined(_MSC_VER)
@@ -944,24 +946,24 @@ static inline size_t mi_ctz(uintptr_t x) {
 #include <limits.h>       // LONG_MAX
 #include <intrin.h>       // BitScanReverse64
 #define MI_HAVE_FAST_BITSCAN
-static inline size_t mi_clz(uintptr_t x) {
-  if (x==0) return MI_INTPTR_BITS;
+static inline size_t mi_clz(size_t x) {
+  if (x==0) return MI_SIZE_BITS;
   unsigned long idx;
-#if (INTPTR_MAX == LONG_MAX)
-  _BitScanReverse(&idx, x);
-#else
-  _BitScanReverse64(&idx, x);
-#endif
-  return ((MI_INTPTR_BITS - 1) - idx);
+  #if (SIZE_MAX == ULONG_MAX)
+    _BitScanReverse(&idx, x);
+  #else
+    _BitScanReverse64(&idx, x);
+  #endif
+  return ((MI_SIZE_BITS - 1) - idx);
 }
-static inline size_t mi_ctz(uintptr_t x) {
-  if (x==0) return MI_INTPTR_BITS;
+static inline size_t mi_ctz(size_t x) {
+  if (x==0) return MI_SIZE_BITS;
   unsigned long idx;
-#if (INTPTR_MAX == LONG_MAX)
-  _BitScanForward(&idx, x);
-#else
-  _BitScanForward64(&idx, x);
-#endif
+  #if (SIZE_MAX == ULONG_MAX)
+    _BitScanForward(&idx, x);
+  #else
+    _BitScanForward64(&idx, x);
+  #endif
   return idx;
 }
 
@@ -1024,11 +1026,26 @@ static inline size_t mi_clz(size_t x) {
 
 #endif
 
-// "bit scan reverse": Return index of the highest bit (or MI_INTPTR_BITS if `x` is zero)
-static inline size_t mi_bsr(uintptr_t x) {
-  return (x==0 ? MI_INTPTR_BITS : MI_INTPTR_BITS - 1 - mi_clz(x));
+// "bit scan reverse": Return index of the highest bit (or MI_SIZE_BITS if `x` is zero)
+static inline size_t mi_bsr(size_t x) {
+  return (x==0 ? MI_SIZE_BITS : MI_SIZE_BITS - 1 - mi_clz(x));
 }
 
+size_t _mi_popcount_generic(size_t x);
+
+static inline size_t mi_popcount(size_t x) {
+  if (x<=1) return x;
+  if (x==SIZE_MAX) return MI_SIZE_BITS;
+  #if defined(__GNUC__)
+    #if (SIZE_MAX == ULONG_MAX)
+      return __builtin_popcountl(x);
+    #else
+      return __builtin_popcountll(x);
+    #endif
+  #else
+    return _mi_popcount_generic(x);
+  #endif
+}
 
 // ---------------------------------------------------------------------------------
 // Provide our own `_mi_memcpy` for potential performance optimizations.
