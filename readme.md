@@ -1,7 +1,7 @@
 
 <img align="left" width="100" height="100" src="doc/mimalloc-logo.png"/>
 
-[<img align="right" src="https://dev.azure.com/Daan0324/mimalloc/_apis/build/status/microsoft.mimalloc?branchName=dev"/>](https://dev.azure.com/Daan0324/mimalloc/_build?definitionId=1&_a=summary)
+[<img align="right" src="https://dev.azure.com/Daan0324/mimalloc/_apis/build/status/microsoft.mimalloc?branchName=dev3"/>](https://dev.azure.com/Daan0324/mimalloc/_build?definitionId=1&_a=summary)
 
 # mimalloc
 
@@ -12,9 +12,9 @@ is a general purpose allocator with excellent [performance](#performance) charac
 Initially developed by Daan Leijen for the runtime systems of the
 [Koka](https://koka-lang.github.io) and [Lean](https://github.com/leanprover/lean) languages.
 
-Latest release   : `v3.1.4` (beta) (2025-06-09).  
-Latest v2 release: `v2.2.4` (2025-06-09).  
-Latest v1 release: `v1.9.4` (2024-06-09).
+Latest release   : `v3.2.7` (2026-01-15) release candidate 2, please report any issues.  
+Latest v2 release: `v2.2.7` (2026-01-15).  
+Latest v1 release: `v1.9.7` (2026-01-15).
 
 mimalloc is a drop-in replacement for `malloc` and can be used in other programs
 without code changes, for example, on dynamically linked ELF-based systems (Linux, BSD, etc.) you can use it as:
@@ -57,6 +57,7 @@ Notable aspects of the design include:
   over our benchmarks.
 - __first-class heaps__: efficiently create and use multiple heaps to allocate across different regions.
   A heap can be destroyed at once instead of deallocating each object separately.
+  New: v3 has true first-class heaps where one can allocate in a heap from any thread.   
 - __bounded__: it does not suffer from _blowup_ \[1\], has bounded worst-case allocation
   times (_wcat_) (upto OS primitives), bounded space overhead (~0.2% meta-data, with low
   internal fragmentation), and has no internal points of contention using only atomic operations.
@@ -77,12 +78,22 @@ Enjoy!
 * `dev2`: development branch for mimalloc v2. This branch is downstream of `dev` 
           (and is essentially equal to `dev` except for `src/segment.c`). Uses larger sliced segments to manage
           mimalloc pages that can reduce fragmentation.
-* `dev3`: development branch for mimalloc v3 beta. This branch is downstream of `dev`. This version 
+* `dev3`: development branch for mimalloc v3 rc1. This branch is downstream of `dev`. This version 
           simplifies the lock-free ownership of previous versions, and improves sharing of memory between 
           threads. On certain large workloads this version may use (much) less memory.
+          Also support true first-class heaps and more efficient heap-walking.
 
 ### Releases
 
+* 2026-01-15, `v1.9.7`, `v2.2.7`, `v3.2.7` (rc2) : Fix zero initializing blocks that were OS allocated.  
+  For v3 various bug and performance fixes. Fix Debian 32-bit compilation.
+* 2026-01-08, `v1.9.6`, `v2.2.6`, `v3.2.6` (rc1) : Important bug fixes. Many improvements to v3 including 
+  true first-class heaps where one can allocate in heap from any thread, and track statistics per heap as well.
+  Added `MIMALLOC_ALLOW_THP` option. This is by default enabled except on Android. When THP is detected on v3,
+  mimalloc will set the `MIMALLOC_MINIMAL_PURGE_SIZE` to 2MiB to avoid breaking up potential THP huge pages.
+  v3 uses faster TLS access on Windows, and has improved performance for `mi_calloc` and aligned allocations.
+  Fixed rare race condition on older v3, fixed potential buffer overflow in debug statistics, add API for returning
+  allocated sizes on allocation and free.
 * 2025-06-09, `v1.9.4`, `v2.2.4`, `v3.1.4` (beta) : Some important bug fixes, including a case where OS memory
   was not always fully released. Improved v3 performance, build on XBox, fix build on Android, support interpose 
   for older macOS versions, use MADV_FREE_REUSABLE on macOS, always check commit success, better support for Windows 
@@ -101,54 +112,12 @@ Enjoy!
   thread local destructors (in Rust/C++); macOS tag change; macOS TLS slot fix; improve stats; 
   consistent `mimalloc.dll` on Windows (instead of `mimalloc-override.dll`); fix mimalloc-redirect on Win11 H2; 
   add 0-byte to canary; upstream CPython fixes; reduce .bss size; allow fixed TLS slot on Windows for improved performance.
-* 2024-05-21, `v1.8.7`, `v2.1.7`: Fix build issues on less common platforms. Started upstreaming patches
-  from the CPython [integration](https://github.com/python/cpython/issues/113141#issuecomment-2119255217). Upstream `vcpkg` patches.
-* 2024-05-13, `v1.8.6`, `v2.1.6`: Fix build errors on various (older) platforms. Refactored aligned allocation.
-* 2024-04-22, `v1.8.4`, `v2.1.4`: Fixes various bugs and build issues. Add `MI_LIBC_MUSL` cmake flag for musl builds.
-  Free-ing code is refactored into a separate module (`free.c`). Mimalloc page info is simplified with the block size
-  directly available (and new `block_size_shift` to improve aligned block free-ing).
-  New approach to collection of abandoned segments: When
-  a thread terminates the segments it owns are abandoned (containing still live objects) and these can be
-  reclaimed by other threads. We no longer use a list of abandoned segments but this is now done using bitmaps in arena's
-  which is more concurrent (and more aggressive). Abandoned memory can now also be reclaimed if a thread frees an object in
-  an abandoned page (which can be disabled using `mi_option_abandoned_reclaim_on_free`). The option `mi_option_max_segment_reclaim`
-  gives a maximum percentage of abandoned segments that can be reclaimed per try (=10%).
-
-* 2023-04-24, `v1.8.2`, `v2.1.2`: Fixes build issues on freeBSD, musl, and C17 (UE 5.1.1). Reduce code size/complexity
-  by removing regions and segment-cache's and only use arenas with improved memory purging -- this may improve memory
-  usage as well for larger services. Renamed options for consistency. Improved Valgrind and ASAN checking.
-
-* 2023-04-03, `v1.8.1`, `v2.1.1`: Fixes build issues on some platforms.
-
-* 2023-03-29, `v1.8.0`, `v2.1.0`: Improved support dynamic overriding on Windows 11. Improved tracing precision
-  with [asan](#asan) and [Valgrind](#valgrind), and added Windows event tracing [ETW](#ETW) (contributed by Xinglong He). Created an OS
-  abstraction layer to make it easier to port and separate platform dependent code (in `src/prim`). Fixed C++ STL compilation on older Microsoft C++ compilers, and various small bug fixes.
-
-* 2022-12-23, `v1.7.9`, `v2.0.9`: Supports building with [asan](#asan) and improved [Valgrind](#valgrind) support.
-  Support arbitrary large alignments (in particular for `std::pmr` pools).
-  Added C++ STL allocators attached to a specific heap (thanks @vmarkovtsev).
-  Heap walks now visit all object (including huge objects). Support Windows nano server containers (by Johannes Schindelin,@dscho).
-  Various small bug fixes.
-
-* 2022-11-03, `v1.7.7`, `v2.0.7`: Initial support for [Valgrind](#valgrind) for leak testing and heap block overflow
-  detection. Initial
-  support for attaching heaps to a specific memory area (only in v2). Fix `realloc` behavior for zero size blocks, remove restriction to integral multiple of the alignment in `alloc_align`, improved aligned allocation performance, reduced contention with many threads on few processors (thank you @dposluns!), vs2022 support, support `pkg-config`, .
-
-* 2022-04-14, `v1.7.6`, `v2.0.6`: fix fallback path for aligned OS allocation on Windows, improve Windows aligned allocation
-  even when compiling with older SDK's, fix dynamic overriding on macOS Monterey, fix MSVC C++ dynamic overriding, fix
-  warnings under Clang 14, improve performance if many OS threads are created and destroyed, fix statistics for large object
-  allocations, using MIMALLOC_VERBOSE=1 has no maximum on the number of error messages, various small fixes.
-
-* 2022-02-14, `v1.7.5`, `v2.0.5` (alpha): fix malloc override on
-  Windows 11, fix compilation with musl, potentially reduced
-  committed memory, add `bin/minject` for Windows,
-  improved wasm support, faster aligned allocation,
-  various small fixes.
 
 * [Older release notes](#older-release-notes)
 
 Special thanks to:
 
+* Sergiy Kuryata for his contributions on reducing memory commit -- especially on Windows with the Windows thread pool (now implemented in v3).
 * [David Carlier](https://devnexen.blogspot.com/) (@devnexen) for his many contributions, and making
   mimalloc work better on many less common operating systems, like Haiku, Dragonfly, etc.
 * Mary Feofanova (@mary3000), Evgeniy Moiseenko, and Manuel Pöter (@mpoeter) for making mimalloc TSAN checkable, and finding
@@ -335,7 +304,7 @@ completely and redirect all calls to the _mimalloc_ library instead .
 You can set further options either programmatically (using [`mi_option_set`](https://microsoft.github.io/mimalloc/group__options.html)), or via environment variables:
 
 - `MIMALLOC_SHOW_STATS=1`: show statistics when the program terminates.
-- `MIMALLOC_VERBOSE=1`: show verbose messages.
+- `MIMALLOC_VERBOSE=1`: show verbose messages (including statistics).
 - `MIMALLOC_SHOW_ERRORS=1`: show error and warning messages.
 
 Advanced options:
@@ -346,11 +315,10 @@ Advanced options:
    as well (like Windows or macOS) which may improve performance (as the whole arena is committed at once).
    Note that eager commit only increases the commit but not the actual the peak resident set
    (rss) so it is generally ok to enable this.
-- `MIMALLOC_PURGE_DELAY=N`: the delay in `N` milli-seconds (by default `10`) after which mimalloc will purge
+- `MIMALLOC_PURGE_DELAY=N`: the delay in `N` milli-seconds (by default `1000` in v3) after which mimalloc will purge
    OS pages that are not in use. This signals to the OS that the underlying physical memory can be reused which
    can reduce memory fragmentation especially in long running (server) programs. Setting `N` to `0` purges immediately when
-   a page becomes unused which can improve memory usage but also decreases performance. Setting `N` to a higher
-   value like `100` can improve performance (sometimes by a lot) at the cost of potentially using more memory at times.
+   a page becomes unused which can improve memory usage but also decreases performance.
    Setting it to `-1` disables purging completely.
 - `MIMALLOC_PURGE_DECOMMITS=1`: By default "purging" memory means unused memory is decommitted (`MEM_DECOMMIT` on Windows,
    `MADV_DONTNEED` (which decresease rss immediately) on `mmap` systems). Set this to 0 to instead "reset" unused
@@ -360,13 +328,16 @@ Advanced options:
 
 Further options for large workloads and services:
 
+- `MIMALLOC_ALLOW_THP=1`: By default always allow transparent huge pages (THP) on Linux systems. On Android only this is
+   by default off. When set to `0`, THP is disabled for the process that mimalloc runs in. If enabled, mimalloc also sets
+   the `MIMALLOC_MINIMAL_PURGE_SIZE` in v3 to 2MiB to avoid potentially breaking up transparent huge pages.
 - `MIMALLOC_USE_NUMA_NODES=N`: pretend there are at most `N` NUMA nodes. If not set, the actual NUMA nodes are detected
    at runtime. Setting `N` to 1 may avoid problems in some virtual environments. Also, setting it to a lower number than
    the actual NUMA nodes is fine and will only cause threads to potentially allocate more memory across actual NUMA
    nodes (but this can happen in any case as NUMA local allocation is always a best effort but not guaranteed).
-- `MIMALLOC_ALLOW_LARGE_OS_PAGES=0`: Set to 1 to use large OS pages (2 or 4MiB) when available; for some workloads this can significantly
-   improve performance. When this option is disabled (default), it also disables transparent huge pages (THP) for the process
-   (on Linux and Android). On Linux the default setting is 2 -- this enables the use of large pages through THP only.
+- `MIMALLOC_ALLOW_LARGE_OS_PAGES=0`: Set to 1 to use large OS pages (2 or 4MiB) when available; for some workloads this can
+   significantly improve performance. However, large OS pages cannot be purged or shared with other processes so may lead
+   to increased memory usage in some cases.
    Use `MIMALLOC_VERBOSE` to check if the large OS pages are enabled -- usually one needs
    to explicitly give permissions for large OS pages (as on [Windows][windows-huge] and [Linux][linux-huge]). However, sometimes
    the OS is very slow to reserve contiguous physical memory for large OS pages so use with care on systems that
@@ -378,11 +349,6 @@ Further options for large workloads and services:
    contiguous physical memory can take a long time when memory is fragmented (but reserving the huge pages is done at
    startup only once).
    Note that we usually need to explicitly give permission for huge OS pages (as on [Windows][windows-huge] and [Linux][linux-huge])).
-   With huge OS pages, it may be beneficial to set the setting
-   `MIMALLOC_EAGER_COMMIT_DELAY=N` (`N` is 1 by default) to delay the initial `N` segments (of 4MiB)
-   of a thread to not allocate in the huge OS pages; this prevents threads that are short lived
-   and allocate just a little to take up space in the huge OS page area (which cannot be purged as huge OS pages are pinned
-   to physical memory).
    The huge pages are usually allocated evenly among NUMA nodes.
    We can use `MIMALLOC_RESERVE_HUGE_OS_PAGES_AT=N` where `N` is the numa node (starting at 0) to allocate all
    the huge pages at a specific numa node instead.
@@ -903,6 +869,50 @@ provided by the bot. You will only need to do this once across all repos using o
 
 
 # Older Release Notes
+
+* 2024-05-21, `v1.8.7`, `v2.1.7`: Fix build issues on less common platforms. Started upstreaming patches
+  from the CPython [integration](https://github.com/python/cpython/issues/113141#issuecomment-2119255217). Upstream `vcpkg` patches.
+* 2024-05-13, `v1.8.6`, `v2.1.6`: Fix build errors on various (older) platforms. Refactored aligned allocation.
+* 2024-04-22, `v1.8.4`, `v2.1.4`: Fixes various bugs and build issues. Add `MI_LIBC_MUSL` cmake flag for musl builds.
+  Free-ing code is refactored into a separate module (`free.c`). Mimalloc page info is simplified with the block size
+  directly available (and new `block_size_shift` to improve aligned block free-ing).
+  New approach to collection of abandoned segments: When
+  a thread terminates the segments it owns are abandoned (containing still live objects) and these can be
+  reclaimed by other threads. We no longer use a list of abandoned segments but this is now done using bitmaps in arena's
+  which is more concurrent (and more aggressive). Abandoned memory can now also be reclaimed if a thread frees an object in
+  an abandoned page (which can be disabled using `mi_option_abandoned_reclaim_on_free`). The option `mi_option_max_segment_reclaim`
+  gives a maximum percentage of abandoned segments that can be reclaimed per try (=10%).
+
+* 2023-04-24, `v1.8.2`, `v2.1.2`: Fixes build issues on freeBSD, musl, and C17 (UE 5.1.1). Reduce code size/complexity
+  by removing regions and segment-cache's and only use arenas with improved memory purging -- this may improve memory
+  usage as well for larger services. Renamed options for consistency. Improved Valgrind and ASAN checking.
+
+* 2023-04-03, `v1.8.1`, `v2.1.1`: Fixes build issues on some platforms.
+
+* 2023-03-29, `v1.8.0`, `v2.1.0`: Improved support dynamic overriding on Windows 11. Improved tracing precision
+  with [asan](#asan) and [Valgrind](#valgrind), and added Windows event tracing [ETW](#ETW) (contributed by Xinglong He). Created an OS
+  abstraction layer to make it easier to port and separate platform dependent code (in `src/prim`). Fixed C++ STL compilation on older Microsoft C++ compilers, and various small bug fixes.
+
+* 2022-12-23, `v1.7.9`, `v2.0.9`: Supports building with [asan](#asan) and improved [Valgrind](#valgrind) support.
+  Support arbitrary large alignments (in particular for `std::pmr` pools).
+  Added C++ STL allocators attached to a specific heap (thanks @vmarkovtsev).
+  Heap walks now visit all object (including huge objects). Support Windows nano server containers (by Johannes Schindelin,@dscho).
+  Various small bug fixes.
+
+* 2022-11-03, `v1.7.7`, `v2.0.7`: Initial support for [Valgrind](#valgrind) for leak testing and heap block overflow
+  detection. Initial
+  support for attaching heaps to a specific memory area (only in v2). Fix `realloc` behavior for zero size blocks, remove restriction to integral multiple of the alignment in `alloc_align`, improved aligned allocation performance, reduced contention with many threads on few processors (thank you @dposluns!), vs2022 support, support `pkg-config`, .
+
+* 2022-04-14, `v1.7.6`, `v2.0.6`: fix fallback path for aligned OS allocation on Windows, improve Windows aligned allocation
+  even when compiling with older SDK's, fix dynamic overriding on macOS Monterey, fix MSVC C++ dynamic overriding, fix
+  warnings under Clang 14, improve performance if many OS threads are created and destroyed, fix statistics for large object
+  allocations, using MIMALLOC_VERBOSE=1 has no maximum on the number of error messages, various small fixes.
+
+* 2022-02-14, `v1.7.5`, `v2.0.5` (alpha): fix malloc override on
+  Windows 11, fix compilation with musl, potentially reduced
+  committed memory, add `bin/minject` for Windows,
+  improved wasm support, faster aligned allocation,
+  various small fixes.
 
 * 2021-11-14, `v1.7.3`, `v2.0.3` (beta): improved WASM support, improved macOS support and performance (including
   M1), improved performance for v2 for large objects, Python integration improvements, more standard
