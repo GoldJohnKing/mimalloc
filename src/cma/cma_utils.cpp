@@ -10,7 +10,5 @@ void CmaSetMemoryAllocatorRuntimeOptions(void)
 
 	mi_option_set_default(mi_option_allow_large_os_pages, 1); // Always use large pages when available
 
-	mi_option_set_default(mi_option_eager_commit_delay, 0); // Always eager commit segments
-
 	mi_option_set_default(mi_option_purge_delay, -1); // Do not purge memory back to the OS
 }
