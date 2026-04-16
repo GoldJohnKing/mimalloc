@@ -12,7 +12,7 @@ terms of the MIT license. A copy of the license can be found in the file
 // This file contains the main type definitions for mimalloc:
 // mi_heap_t      : all data for a thread-local heap, contains
 //                  lists of all managed heap pages.
-// mi_segment_t   : a larger chunk of memory (32GiB) from where pages
+// mi_segment_t   : a larger chunk of memory (32MiB on 64-bit) from where pages
 //                  are allocated. A segment is divided in slices (64KiB) from
 //                  which pages are allocated.
 // mi_page_t      : a "mimalloc" page (usually 64KiB or 512KiB) from
@@ -63,9 +63,9 @@ terms of the MIT license. A copy of the license can be found in the file
 #define MI_SECURE 0
 #endif
 
-// Define MI_DEBUG for debug mode
-// #define MI_DEBUG 1  // basic assertion checks and statistics, check double free, corrupted free list, and invalid pointer free.
-// #define MI_DEBUG 2  // + internal assertion checks
+// Define MI_DEBUG for assertion and invariant checking
+// #define MI_DEBUG 1  // basic assertion checks and statistics, check double free, corrupted free list, and invalid pointer free. (cmake -DMI_DEBUG=ON)
+// #define MI_DEBUG 2  // + internal assertion checks (cmake -DMI_DEBUG_INTERNAL=ON)
 // #define MI_DEBUG 3  // + extensive internal invariant checking (cmake -DMI_DEBUG_FULL=ON)
 #if !defined(MI_DEBUG)
 #if defined(MI_BUILD_RELEASE) || defined(NDEBUG)
@@ -75,11 +75,9 @@ terms of the MIT license. A copy of the license can be found in the file
 #endif
 #endif
 
-// Use guard pages behind objects of a certain size (set by the MIMALLOC_DEBUG_GUARDED_MIN/MAX options)
-// Padding should be disabled when using guard pages
-// #define MI_GUARDED 1
-#if defined(MI_GUARDED)
-#define MI_PADDING  0
+// Enable guard pages behind objects of a certain size (set by the MIMALLOC_GUARDED_MIN/MAX/SAMPLE_RATE options)
+#if !defined(MI_GUARDED) && MI_DEBUG
+#define MI_GUARDED  1
 #endif
 
 // Reserve extra padding at the end of each block to be more resilient against heap block overflows.
@@ -194,7 +192,7 @@ typedef int32_t  mi_ssize_t;
 #define MI_SEGMENT_ALIGN                  MI_SEGMENT_SIZE
 #define MI_SEGMENT_MASK                   ((uintptr_t)(MI_SEGMENT_ALIGN - 1))
 #define MI_SEGMENT_SLICE_SIZE             (MI_ZU(1)<< MI_SEGMENT_SLICE_SHIFT)
-#define MI_SLICES_PER_SEGMENT             (MI_SEGMENT_SIZE / MI_SEGMENT_SLICE_SIZE) // 1024
+#define MI_SLICES_PER_SEGMENT             (MI_SEGMENT_SIZE / MI_SEGMENT_SLICE_SIZE) // 512 (128 on 32-bit)
 
 #define MI_SMALL_PAGE_SIZE                (MI_ZU(1)<<MI_SMALL_PAGE_SHIFT)
 #define MI_MEDIUM_PAGE_SIZE               (MI_ZU(1)<<MI_MEDIUM_PAGE_SHIFT)
@@ -564,6 +562,7 @@ struct mi_heap_s {
   size_t                page_count;                          // total number of pages in the `pages` queues.
   size_t                page_retired_min;                    // smallest retired index (retired pages are fully free, but still in the page queues)
   size_t                page_retired_max;                    // largest retired index into the `pages` array.
+  size_t                pages_full_size;                     // optimization: total size of blocks in the pages of the full queue (issue #1220)
   long                  generic_count;                       // how often is `_mi_malloc_generic` called?
   long                  generic_collect_count;               // how often is `_mi_malloc_generic` called without collecting?
   mi_heap_t*            next;                                // list of heaps per thread

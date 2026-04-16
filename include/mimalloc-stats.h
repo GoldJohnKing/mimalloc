@@ -11,7 +11,7 @@ terms of the MIT license. A copy of the license can be found in the file
 #include <mimalloc.h>
 #include <stdint.h>
 
-#define MI_STAT_VERSION   3   // increased on every backward incompatible change
+#define MI_STAT_VERSION   4  // increased on every backward incompatible change
 
 // count allocation over time
 typedef struct mi_stat_count_s {
@@ -73,7 +73,8 @@ typedef struct mi_stat_counter_s {
 
 typedef struct mi_stats_s
 {
-  int version;
+  size_t size;          // size of the mi_stats_t structure 
+  size_t version;       
 
   MI_STAT_FIELDS()
 
@@ -89,12 +90,15 @@ typedef struct mi_stats_s
 #undef MI_STAT_COUNT
 #undef MI_STAT_COUNTER
 
+// helper
+#define mi_stats_t_decl(name)  mi_stats_t name = { 0 }; name.size = sizeof(mi_stats_t); name.version = MI_STAT_VERSION;
+
 // Exported definitions
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-mi_decl_export void  mi_stats_get( size_t stats_size, mi_stats_t* stats ) mi_attr_noexcept;
+mi_decl_export bool  mi_stats_get( mi_stats_t* stats ) mi_attr_noexcept;
 mi_decl_export char* mi_stats_get_json( size_t buf_size, char* buf ) mi_attr_noexcept;    // use mi_free to free the result if the input buf == NULL
 
 #ifdef __cplusplus
