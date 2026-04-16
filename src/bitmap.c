@@ -220,13 +220,13 @@ static inline bool mi_bfield_atomic_try_clearX(_Atomic(mi_bfield_t)*b, bool* all
 
 // Check if a bit is set
 static inline bool mi_bfield_atomic_is_set(const _Atomic(mi_bfield_t)*b, const size_t idx) {
-  const mi_bfield_t x = mi_atomic_load_relaxed(b);
+  const mi_bfield_t x = mi_atomic_load_acquire(b);
   return ((x & mi_bfield_mask(1,idx)) != 0);
 }
 
 // Check if a bit is clear
 static inline bool mi_bfield_atomic_is_clear(const _Atomic(mi_bfield_t)*b, const size_t idx) {
-  const mi_bfield_t x = mi_atomic_load_relaxed(b);
+  const mi_bfield_t x = mi_atomic_load_acquire(b);
   return ((x & mi_bfield_mask(1, idx)) == 0);
 }
 
@@ -239,14 +239,14 @@ static inline bool mi_bfield_atomic_is_xset(mi_xset_t set, const _Atomic(mi_bfie
 // Check if all bits corresponding to a mask are set.
 static inline bool mi_bfield_atomic_is_set_mask(const _Atomic(mi_bfield_t)* b, mi_bfield_t mask) {
   mi_assert_internal(mask != 0);
-  const mi_bfield_t x = mi_atomic_load_relaxed(b);
+  const mi_bfield_t x = mi_atomic_load_acquire(b);
   return ((x & mask) == mask);
 }
 
 // Check if all bits corresponding to a mask are clear.
 static inline bool mi_bfield_atomic_is_clear_mask(const _Atomic(mi_bfield_t)* b, mi_bfield_t mask) {
   mi_assert_internal(mask != 0);
-  const mi_bfield_t x = mi_atomic_load_relaxed(b);
+  const mi_bfield_t x = mi_atomic_load_acquire(b);
   return ((x & mask) == 0);
 }
 
@@ -259,7 +259,7 @@ static inline bool mi_bfield_atomic_is_xset_mask(mi_xset_t set, const _Atomic(mi
 
 // Count bits in a mask
 static inline size_t mi_bfield_atomic_popcount_mask(_Atomic(mi_bfield_t)*b, mi_bfield_t mask) {
-  const mi_bfield_t x = mi_atomic_load_relaxed(b);
+  const mi_bfield_t x = mi_atomic_load_acquire(b);
   return mi_bfield_popcount(x & mask);
 }
 
@@ -962,6 +962,19 @@ static bool mi_bchunk_bsr(mi_bchunk_t* chunk, size_t* pidx) {
   return false;
 }
 
+static bool mi_bchunk_bsr_inv(mi_bchunk_t* chunk, size_t* pidx) {
+  for (size_t i = MI_BCHUNK_FIELDS; i > 0; ) {
+    i--;
+    mi_bfield_t b = mi_atomic_load_relaxed(&chunk->bfields[i]);
+    size_t idx;
+    if (mi_bsr(~b, &idx)) {
+      *pidx = (i*MI_BFIELD_BITS) + idx;
+      return true;
+    }
+  }
+  return false;
+}
+
 static size_t mi_bchunk_popcount(mi_bchunk_t* chunk) {
   size_t popcount = 0;
   for (size_t i = 0; i < MI_BCHUNK_FIELDS; i++) {
@@ -1428,7 +1441,7 @@ bool _mi_bitmap_forall_setc_ranges(mi_bitmap_t* bitmap, mi_forall_set_fun_t* vis
       mi_bchunk_t* const chunk = &bitmap->chunks[chunk_idx];
       for (size_t j = 0; j < MI_BCHUNK_FIELDS; j++) {
         const size_t base_idx = (chunk_idx*MI_BCHUNK_BITS) + (j*MI_BFIELD_BITS);
-        mi_bfield_t b = mi_atomic_exchange_relaxed(&chunk->bfields[j], 0);
+        mi_bfield_t b = mi_atomic_exchange_relaxed(&chunk->bfields[j], (mi_bfield_t)0);
 #if MI_DEBUG > 1
         const size_t bpopcount = mi_popcount(b);
         size_t rngcount = 0;
@@ -1481,7 +1494,7 @@ bool _mi_bitmap_forall_setc_rangesn(mi_bitmap_t* bitmap, size_t rngslices, mi_fo
       mi_bchunk_t* const chunk = &bitmap->chunks[chunk_idx];
       for (size_t j = 0; j < MI_BCHUNK_FIELDS; j++) {
         const size_t base_idx = (chunk_idx*MI_BCHUNK_BITS) + (j*MI_BFIELD_BITS);
-        mi_bfield_t b = mi_atomic_exchange_relaxed(&chunk->bfields[j], 0);                // atomic clear
+        mi_bfield_t b = mi_atomic_exchange_relaxed(&chunk->bfields[j], (mi_bfield_t)0);   // atomic clear
         mi_bfield_t skipped = 0;                                                          // but track which bits we skip so we can restore them
         for(size_t shift = 0; rngslices + shift <= MI_BFIELD_BITS; shift += rngslices) {  // per `rngslices` to keep alignment
           const mi_bfield_t rngmask = mi_bfield_mask(rngslices, shift);
@@ -1547,6 +1560,24 @@ void mi_bbitmap_unsafe_setN(mi_bbitmap_t* bbitmap, size_t idx, size_t n) {
   mi_bchunks_unsafe_setN(&bbitmap->chunks[0], &bbitmap->chunkmap, idx, n);
 }
 
+bool mi_bbitmap_bsr_inv(mi_bbitmap_t* bbitmap, size_t* idx) {
+  const size_t chunkmap_max = _mi_divide_up(mi_bbitmap_chunk_count(bbitmap), MI_BFIELD_BITS);
+  for (size_t i = chunkmap_max; i > 0; ) {
+    i--;
+    mi_bfield_t cmap = mi_atomic_load_relaxed(&bbitmap->chunkmap.bfields[i]);
+    size_t cmap_idx;
+    if (mi_bsr(~cmap, &cmap_idx)) {
+      // highest chunk
+      const size_t chunk_idx = i*MI_BFIELD_BITS + cmap_idx;
+      size_t cidx;
+      if (mi_bchunk_bsr_inv(&bbitmap->chunks[chunk_idx], &cidx)) {
+        *idx = (chunk_idx * MI_BCHUNK_BITS) + cidx;
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 
 /* --------------------------------------------------------------------------------

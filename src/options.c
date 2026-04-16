@@ -77,7 +77,7 @@ int mi_version(void) mi_attr_noexcept {
 #endif
 
 #ifndef MI_DEFAULT_GUARDED_SAMPLE_RATE
-#if MI_GUARDED
+#if MI_GUARDED && !MI_DEBUG
 #define MI_DEFAULT_GUARDED_SAMPLE_RATE 4000
 #else
 #define MI_DEFAULT_GUARDED_SAMPLE_RATE 0
@@ -136,11 +136,7 @@ static mi_option_desc_t mi_options[_mi_option_last] =
   { 0, MI_OPTION_UNINIT, MI_OPTION(deprecated_page_reset) },      // reset page memory on free
   { 0, MI_OPTION_UNINIT, MI_OPTION(deprecated_abandoned_page_purge) }, 
   { 0, MI_OPTION_UNINIT, MI_OPTION(deprecated_segment_reset) },   // reset segment memory on free (needs eager commit)
-#if defined(__NetBSD__)
-  { 0, MI_OPTION_UNINIT, MI_OPTION(eager_commit_delay) },         // the first N segments per thread are not eagerly committed
-#else
   { 1, MI_OPTION_UNINIT, MI_OPTION(deprecated_eager_commit_delay) },  
-#endif
   { 1000,MI_OPTION_UNINIT, MI_OPTION_LEGACY(purge_delay,reset_delay) },  // purge delay in milli-seconds
   { 0,   MI_OPTION_UNINIT, MI_OPTION(use_numa_nodes) },           // 0 = use available numa nodes, otherwise use at most N nodes.
   { 0,   MI_OPTION_UNINIT, MI_OPTION_LEGACY(disallow_os_alloc,limit_os_alloc) },           // 1 = do not use OS memory for allocation (but only reserved arenas)
@@ -221,8 +217,8 @@ void _mi_options_post_init(void) {
 mi_decl_export void mi_options_print_out(mi_output_fun* out, void* arg) mi_attr_noexcept
 {
   // show version
-  const int vermajor = MI_MALLOC_VERSION/1000;
-  const int verminor = (MI_MALLOC_VERSION%1000)/100;
+  const int vermajor = MI_MALLOC_VERSION/10000;
+  const int verminor = (MI_MALLOC_VERSION%10000)/100;
   const int verpatch = (MI_MALLOC_VERSION%100);
   _mi_fprintf(out, arg, "v%i.%i.%i%s%s (built on %s, %s)\n", vermajor, verminor, verpatch,
       #if defined(MI_CMAKE_BUILD_TYPE)
@@ -291,7 +287,9 @@ mi_decl_nodiscard size_t mi_option_get_size(mi_option_t option) {
   const long x = mi_option_get(option);
   size_t size = (x < 0 ? 0 : (size_t)x);
   if (mi_option_has_size_in_kib(option)) {
-    size *= MI_KiB;
+    if (mi_mul_overflow(size, MI_KiB, &size)) {
+      size = MI_MAX_ALLOC_SIZE;
+    }
   }
   return size;
 }
@@ -672,7 +670,7 @@ static void mi_option_init(mi_option_desc_t* desc) {
         else { size = (size + MI_KiB - 1) / MI_KiB; }
         if (end[0] == 'I' && end[1] == 'B') { end += 2; } // KiB, MiB, GiB, TiB
         else if (*end == 'B') { end++; }                  // Kb, Mb, Gb, Tb
-        if (overflow || size > MI_MAX_ALLOC_SIZE) { size = (MI_MAX_ALLOC_SIZE / MI_KiB); }
+        if (overflow || size > (MI_MAX_ALLOC_SIZE / MI_KiB)) { size = (MI_MAX_ALLOC_SIZE / MI_KiB); }
         value = (size > LONG_MAX ? LONG_MAX : (long)size);
       }
       if (*end == 0) {

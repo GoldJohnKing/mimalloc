@@ -11,7 +11,7 @@ terms of the MIT license. A copy of the license can be found in the file
 #include <mimalloc.h>
 #include <stdint.h>
 
-#define MI_STAT_VERSION   4  // increased on every backward incompatible change
+#define MI_STAT_VERSION   5  // increased on every backward incompatible change
 
 // alignment for atomic fields
 #if defined(_MSC_VER)
@@ -73,10 +73,12 @@ typedef struct mi_stat_counter_s {
   MI_STAT_COUNT(_segments_reserved) \
   /* only on v3 */ \
   MI_STAT_COUNT(heaps) \
+  MI_STAT_COUNT(theaps) \
   MI_STAT_COUNTER(pages_reclaim_on_alloc) \
   MI_STAT_COUNTER(pages_reclaim_on_free) \
   MI_STAT_COUNTER(pages_reabandon_full) \
-  MI_STAT_COUNTER(pages_unabandon_busy_wait)
+  MI_STAT_COUNTER(pages_unabandon_busy_wait) \
+  MI_STAT_COUNTER(heaps_delete_wait)
 
 // Size bins for chunks
 typedef enum mi_chunkbin_e {
@@ -116,7 +118,13 @@ typedef struct mi_stats_s
 #undef MI_STAT_COUNTER
 
 // helper
-#define mi_stats_t_decl(name)  mi_stats_t name = { 0 }; name.size = sizeof(mi_stats_t); name.version = MI_STAT_VERSION;
+#if __cplusplus
+#define MI_STATS_ZERO_INIT  { }     /* empty initializer to prevent running the constructor (with msvc) */
+#else
+#define MI_STATS_ZERO_INIT  { 0 }   /* C zero initialize */
+#endif
+
+#define mi_stats_t_decl(name)  mi_stats_t name = MI_STATS_ZERO_INIT; name.size = sizeof(mi_stats_t); name.version = MI_STAT_VERSION;
 
 // Exported definitions
 #ifdef __cplusplus

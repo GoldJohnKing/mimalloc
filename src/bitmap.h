@@ -281,6 +281,10 @@ mi_chunkbin_t mi_bbitmap_debug_get_bin(const mi_bchunk_t* chunkmap_bins, size_t 
 
 size_t mi_bbitmap_size(size_t bit_count, size_t* chunk_count);
 
+// If a bit is clear in the bitmap, return `true` and set `idx` to the index of the highest bit that was clear.
+// Otherwise return `false` (and `*idx` is undefined).
+// Used for debug output.
+bool mi_bbitmap_bsr_inv(mi_bbitmap_t* bbitmap, size_t* idx);
 
 // Initialize a bitmap to all clear; avoid a mem_zero if `already_zero` is true
 // returns the size of the bitmap.

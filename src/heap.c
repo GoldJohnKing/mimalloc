@@ -33,34 +33,27 @@ void mi_heap_stats_merge_to_main(mi_heap_t* heap) {
   _mi_stats_merge_into(&mi_heap_main()->stats, &heap->stats);
 }
 
-static mi_theap_t* mi_heap_init_theap(const mi_heap_t* const_heap)
+static mi_decl_noinline mi_theap_t* mi_heap_init_theap(const mi_heap_t* const_heap)
 {
   mi_heap_t* heap = (mi_heap_t*)const_heap;
   mi_assert_internal(heap!=NULL);
 
   if (_mi_is_heap_main(heap)) {
     // this can be called if the (main) thread is not yet initialized (as no allocation happened)
-    mi_thread_init();
-    mi_theap_t* theap = _mi_heap_theap(heap);
-    mi_assert_internal(theap!=NULL);
+    // but `theap_main_init_get()` will call `mi_thread_init()`
+    mi_theap_t* const theap = _mi_theap_main_safe();
+    mi_assert_internal(theap!=NULL && _mi_is_heap_main(_mi_theap_heap(theap)));
     return theap;
   }
 
   // otherwise initialize the theap for this heap
   // get the thread local
-  mi_theap_t* theap = NULL;
-  if (heap->theap==0) {
-    // initialize thread locals
-    heap->theap = _mi_thread_local_create();
-    if (heap->theap==0) {
-      _mi_error_message(EFAULT, "unable to dynamically create a thread local for a heap\n");
-      return NULL;
-    }
+  mi_assert_internal(heap->theap != 0);
+  if (heap->theap==0) {  // paranoia
+    _mi_error_message(EFAULT, "no thread-local reserved for heap (%p)\n", heap);
+    return NULL;
   }
-  else {
-    // get current thread local
-    theap = (mi_theap_t*)_mi_thread_local_get(heap->theap);
-  }
+  mi_theap_t* theap = (mi_theap_t*)_mi_thread_local_get(heap->theap);
 
   // create a fresh theap?
   if (theap==NULL) {
@@ -81,7 +74,7 @@ static mi_theap_t* mi_heap_init_theap(const mi_heap_t* const_heap)
 // get the theap for a heap without initializing (and return NULL in that case)
 mi_theap_t* _mi_heap_theap_get_peek(const mi_heap_t* heap) {
   if (heap==NULL || _mi_is_heap_main(heap)) {
-    return __mi_theap_main;  // don't call _mi_theap_main as it may still be NULL
+    return _mi_theap_main_safe(); 
   }
   else {
     return (mi_theap_t*)_mi_thread_local_get(heap->theap);
@@ -103,12 +96,21 @@ mi_theap_t* _mi_heap_theap_get_or_init(const mi_heap_t* heap)
 
 mi_heap_t* mi_heap_new_in_arena(mi_arena_id_t exclusive_arena_id) {
   // always allocate heap data in the (subprocess) main heap
-  mi_heap_t* heap_main = mi_heap_main();
+  mi_heap_t* const heap_main = mi_heap_main();
   // todo: allocate heap data in the exclusive arena ?
-  mi_heap_t* heap = (mi_heap_t*)mi_heap_zalloc( heap_main, sizeof(mi_heap_t) );
+  mi_heap_t* const heap = (mi_heap_t*)mi_heap_zalloc( heap_main, sizeof(mi_heap_t) );
   if (heap==NULL) return NULL;
 
+  // reserve a thread local slot for this heap (see also issue #1230)
+  const mi_thread_local_t theap_slot = _mi_thread_local_create();
+  if (theap_slot == 0) {
+    _mi_error_message(EFAULT, "unable to dynamically create a thread local for a heap\n");
+    mi_free(heap);
+    return NULL;
+  }
+
   // init fields
+  heap->theap = theap_slot;
   heap->subproc = heap_main->subproc;
   heap->heap_seq = mi_atomic_increment_relaxed(&heap_main->subproc->heap_total_count);
   heap->exclusive_arena = _mi_arena_from_id(exclusive_arena_id);
@@ -135,21 +137,35 @@ mi_heap_t* mi_heap_new(void) {
   return mi_heap_new_in_arena(0);
 }
 
-// free the heap resources (assuming the pages are already moved/destroyed)
+// free all theaps belonging to this heap (without deleting their pages as we do this arena wise for efficiency)
+static void mi_heap_free_theaps(mi_heap_t* heap) {
+  // This can run concurrently with a thread that terminates (see `init.c:mi_thread_theaps_done`), 
+  // and we need to ensure we free theaps atomically.
+  // We do this in a loop where we release the theaps_lock at every potential re-iteration to unblock 
+  // potential concurrent thread termination which tries to remove the theap from our theaps list.
+  bool all_freed;
+  do {
+    all_freed = true;
+    mi_theap_t* theap = NULL;
+    mi_lock(&heap->theaps_lock) { 
+      theap = heap->theaps; 
+      while(theap != NULL) {
+        mi_theap_t* next = theap->hnext;
+        if (!_mi_theap_free(theap, false /* dont re-acquire the heap->theaps_lock */, true /* acquire the tld->theaps_lock though */ )) {
+          all_freed = false;
+        }
+        theap = next;
+      }      
+    }
+    if (!all_freed) { mi_heap_stat_counter_increase(heap,heaps_delete_wait,1); mi_atomic_yield(); }
+               else { mi_assert_internal(heap->theaps==NULL); }               
+  }
+  while(!all_freed);
+}
+
+// free the heap resources (assuming the pages are already moved/destroyed, and all theaps have been freed)
 static void mi_heap_free(mi_heap_t* heap) {
   mi_assert_internal(heap!=NULL && !_mi_is_heap_main(heap));
-
-  // free all theaps belonging to this heap
-  mi_theap_t* theap = NULL;
-  mi_lock(&heap->theaps_lock) { theap = heap->theaps; }
-  while(theap != NULL) {
-    mi_theap_t* next = NULL;
-    mi_lock(&heap->theaps_lock) { next = theap->hnext; }
-    _mi_theap_free(theap);
-    theap = next;
-  }
-  mi_lock(&heap->theaps_lock) { theap = heap->theaps; }
-  mi_assert_internal(theap==NULL);
 
   // free all arena pages infos
   mi_lock(&heap->arena_pages_lock) {
@@ -184,8 +200,16 @@ void mi_heap_delete(mi_heap_t* heap) {
     _mi_warning_message("cannot delete the main heap\n");
     return;
   }
+  mi_heap_free_theaps(heap);
   _mi_heap_move_pages(heap, mi_heap_main());
   mi_heap_free(heap);
+}
+
+void _mi_heap_force_destroy(mi_heap_t* heap) {
+  if (heap==NULL) return;
+  mi_heap_free_theaps(heap);
+  _mi_heap_destroy_pages(heap);
+  if (!_mi_is_heap_main(heap)) { mi_heap_free(heap); }
 }
 
 void mi_heap_destroy(mi_heap_t* heap) {
@@ -194,8 +218,7 @@ void mi_heap_destroy(mi_heap_t* heap) {
     _mi_warning_message("cannot destroy the main heap\n");
     return;
   }
-  _mi_heap_destroy_pages(heap);
-  mi_heap_free(heap);
+  _mi_heap_force_destroy(heap);
 }
 
 mi_heap_t* mi_heap_of(const void* p) {
@@ -216,4 +239,26 @@ bool mi_heap_contains(const mi_heap_t* heap, const void* p) {
 // deprecated
 bool mi_check_owned(const void* p) {
   return mi_any_heap_contains(p);
+}
+
+// unsafe heap utilization function for DragonFly (see issue #1258)
+// If the page of pointer `p` belongs to `heap` (or `heap==NULL`) and has less than `perc_threshold` used blocks in its used area return `true`.
+// This function is unsafe in general as it assumes we are the only thread accessing the page of `p`.
+bool mi_unsafe_heap_page_is_under_utilized(mi_heap_t* heap, void* p, size_t perc_threshold) mi_attr_noexcept {
+  if (p==NULL) return false;
+  const mi_page_t* const page = _mi_safe_ptr_page(p);   // Get the page containing this pointer
+  if (page==NULL || page->used==page->capacity || page->capacity < page->reserved) return false;
+  // If the page is the head of the queue, it is currently being used for 
+  // allocations; we skip it to avoid immediate thrashing.
+  if (page->prev == NULL)  return false;
+
+  // match heap?
+  const mi_heap_t* const page_heap = mi_page_heap(page);
+  if (page_heap==NULL) return false;
+  if (heap!=NULL && page_heap!=heap) return false;
+    
+  // check utilization
+  if (page->capacity==0)   return false;
+  if (perc_threshold>=100) return true;
+  return (perc_threshold >= ((100*page->used) / page->capacity));
 }
