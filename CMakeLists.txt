@@ -4,7 +4,8 @@ project(libmimalloc C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
-option(MI_SECURE            "Use full security mitigations (like guard pages, allocation randomization, double-free mitigation, and free-list corruption detection)" OFF)
+option(MI_SECURE            "Use security mitigations (like meta data guard pages, allocation randomization, double-free mitigation, and free-list corruption detection)" OFF)
+option(MI_SECURE_FULL       "Use full security mitigations including guard pages at the end of each mimalloc page (may be expensive)" OFF)
 option(MI_OVERRIDE          "Override the standard malloc interface (i.e. define entry points for 'malloc', 'free', etc)" ON)
 option(MI_XMALLOC           "Enable abort() call on memory allocation failure by default" OFF)
 option(MI_SHOW_ERRORS       "Show error and warning messages by default (only enabled by default in DEBUG mode)" OFF)
@@ -46,6 +47,10 @@ option(MI_SEE_ASM           "Generate assembly files" OFF)
 # negated options for vcpkg features
 option(MI_NO_USE_CXX        "Use plain C compilation (has priority over MI_USE_CXX)" OFF)
 option(MI_NO_OPT_ARCH       "Do not use architecture specific optimizations (like '-march=armv8.1-a' for example) (has priority over MI_OPT_ARCH)" OFF)
+
+# experimental
+option(MI_WIN_INIT_USE_RAW_DLLMAIN "Use the raw DLL main entry point for mimalloc initialization; can be more robust but can also lead to link errors with other libraries" OFF)
+option(MI_WIN_INIT_USE_TLS_DLLMAIN "Use legacy TLS entries with DllMain for mimalloc initialization" OFF)
 
 # deprecated options
 option(MI_WIN_USE_FLS       "Use Fiber local storage on Windows to detect thread termination (deprecated)" OFF)
@@ -112,7 +117,7 @@ endif()
 # -----------------------------------------------------------------------------
 
 message(STATUS "")
-if (NOT CMAKE_BUILD_TYPE)
+if(NOT CMAKE_BUILD_TYPE)
   if ("${CMAKE_BINARY_DIR}" MATCHES ".*((D|d)ebug|asan|tsan|ubsan|valgrind)$")
     message(STATUS "No build type selected, default to 'Debug'")
     set(CMAKE_BUILD_TYPE "Debug")
@@ -122,12 +127,12 @@ if (NOT CMAKE_BUILD_TYPE)
   endif()
 endif()
 
-if (CMAKE_GENERATOR MATCHES "^Visual Studio.*$")
+if(CMAKE_GENERATOR MATCHES "^Visual Studio.*$")
   message(STATUS "Note: when building with Visual Studio the build type is specified when building.")
   message(STATUS "For example: 'cmake --build . --config=Release")
 endif()
 
-if("${CMAKE_BINARY_DIR}" MATCHES ".*(S|s)ecure$")
+if(NOT MI_SECURE AND NOT MI_SECURE_FULL AND "${CMAKE_BINARY_DIR}" MATCHES ".*(S|s)ecure$")
   message(STATUS "Default to secure build")
   set(MI_SECURE "ON")
 endif()
@@ -248,8 +253,12 @@ if(WIN32)
   endif()
 endif()
 
-if(MI_SECURE)
-  message(STATUS "Set full secure build (MI_SECURE=ON)")
+if(MI_SECURE_FULL)
+  set(MI_SECURE ON)
+  message(STATUS "Set full secure build (MI_SECURE_FULL=ON)")
+  list(APPEND mi_defines MI_SECURE=5)
+elseif(MI_SECURE)
+  message(STATUS "Set secure build (MI_SECURE=ON)")
   list(APPEND mi_defines MI_SECURE=4)
 endif()
 
@@ -416,14 +425,24 @@ if(MI_LIBC_MUSL)
   list(APPEND mi_defines MI_LIBC_MUSL=1)
 endif()
 
-if(MI_WIN_USE_FLS)
-  message(STATUS "Use the Fiber API to detect thread termination (deprecated) (MI_WIN_USE_FLS=ON)")
-  list(APPEND mi_defines MI_WIN_USE_FLS=1)
-endif()
-
 if(MI_WIN_DIRECT_TLS)
   message(STATUS "Use only direct TLS slots on Windows to avoid extra tests in the malloc fast path -- this only works if the program uses less than 64 TlsAlloc'd slots in total! (MI_WIN_USE_ONLY_DIRECT_TLS=ON)")
   list(APPEND mi_defines MI_WIN_DIRECT_TLS=1)
+endif()
+
+if(MI_WIN_INIT_USE_RAW_DLLMAIN)
+  message(STATUS "Use raw Dll main entry on Windows to initialize and finalize mimalloc (MI_WIN_INIT_USE_RAW_DLLMAIN=ON)")
+  message(STATUS "Note: this can lead to link errors if other libraries also try to define a raw Dll main entry point")
+  list(APPEND mi_defines MI_WIN_INIT_USE_RAW_DLLMAIN=1)
+elseif(MI_WIN_INIT_USE_TLS_DLLMAIN)
+  message(STATUS "Use Dll main entry with TLS entries on Windows to initialize and finalize mimalloc (MI_WIN_INIT_USE_TLS_DLLMAIN=ON)")
+  list(APPEND mi_defines MI_WIN_INIT_USE_TLS_DLLMAIN=1)
+elseif(MI_WIN_USE_FLS)
+  message(STATUS "Deprecated: Use the Fiber API to detect thread termination (deprecated) (MI_WIN_USE_FLS=ON)")
+  list(APPEND mi_defines MI_WIN_INIT_USE_FLS=1)
+else()
+  # default uses CRT with TLS entries for initialization and finalization
+  # list(APPEND mi_defines MI_WIN_INIT_USE_CRT_TLS=1)
 endif()
 
 # Check /proc/cpuinfo for an SV39 MMU and limit the virtual address bits.
