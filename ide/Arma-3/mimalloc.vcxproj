@@ -30,12 +30,19 @@
   <ImportGroup Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
-  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Label="UserMacros">
+    <!-- Auto-read version from cmake\mimalloc-config-version.cmake -->
+    <_MiCmakeVer>$(MSBuildThisFileDirectory)..\..\cmake\mimalloc-config-version.cmake</_MiCmakeVer>
+    <_MiMajor>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(_MiCmakeVer)')), 'mi_version_major\s+(\d+)').Result('$1'))</_MiMajor>
+    <_MiMinor>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(_MiCmakeVer)')), 'mi_version_minor\s+(\d+)').Result('$1'))</_MiMinor>
+    <_MiPatch>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(_MiCmakeVer)')), 'mi_version_patch\s+(\d+)').Result('$1'))</_MiPatch>
+    <_MiVersion>v$(_MiMajor)$(_MiMinor)$(_MiPatch)</_MiVersion>
+  </PropertyGroup>
   <PropertyGroup>
     <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(SolutionDir)Release\</OutDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">mimalloc.dir\Release\</IntDir>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">mimalloc_v331</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">mimalloc_$(_MiVersion)_$([System.DateTime]::Now.ToString(`yyyyMMdd`))</TargetName>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.dll</TargetExt>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</GenerateManifest>
