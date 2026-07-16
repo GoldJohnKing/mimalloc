@@ -609,11 +609,11 @@ static void mi_option_init(mi_option_desc_t* desc) {
   // Read option value from the environment
   char s[64 + 1];
   char buf[64+1];
-  _mi_strlcpy(buf, "mimalloc_", sizeof(buf));
+  _mi_strlcpy(buf, "arma3_mimalloc_", sizeof(buf)); // Arma 3 CMA: Use "ARMA3_" prefix to avoid affecting other mimalloc instances
   _mi_strlcat(buf, desc->name, sizeof(buf));
   int err = _mi_getenv(buf, s, sizeof(s));
   if (err==ENOENT && desc->legacy_name != NULL) {
-    _mi_strlcpy(buf, "mimalloc_", sizeof(buf));
+    _mi_strlcpy(buf, "arma3_mimalloc_", sizeof(buf)); // Arma 3 CMA: Use "ARMA3_" prefix to avoid affecting other mimalloc instances
     _mi_strlcat(buf, desc->legacy_name, sizeof(buf));
     err = _mi_getenv(buf, s, sizeof(s));
     if (err==0) {
