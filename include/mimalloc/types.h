@@ -99,6 +99,10 @@ terms of the MIT license. A copy of the license can be found in the file
 #define MI_ENCODE_FREELIST  1
 #endif
 
+#if (MI_ENCODE_FREELIST && (MI_SECURE>=4 || MI_DEBUG!=0))
+#define MI_CHECK_DOUBLE_FREE  1
+#endif
+
 
 // We used to abandon huge pages in order to eagerly deallocate it if freed from another thread.
 // Unfortunately, that makes it not possible to visit them during a heap walk or include them in a
@@ -539,7 +543,7 @@ typedef struct mi_random_cxt_s {
 #if (MI_PADDING)
 typedef struct mi_padding_s {
   uint32_t canary; // encoded block value to check validity of the padding (in case of overflow)
-  uint32_t delta;  // padding bytes before the block. (mi_usable_size(p) - delta == exact allocated bytes)
+  uint32_t delta;  // padding bytes before the block. (mi_full_usable_size(p) - delta == exact allocated bytes)
 } mi_padding_t;
 #define MI_PADDING_SIZE   (sizeof(mi_padding_t))
 #define MI_PADDING_WSIZE  ((MI_PADDING_SIZE + MI_INTPTR_SIZE - 1) / MI_INTPTR_SIZE)

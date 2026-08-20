@@ -45,7 +45,11 @@ terms of the MIT license. A copy of the license can be found in the file
 #define mi_decl_align(a)        __attribute__((aligned(a)))
 #define mi_decl_noreturn        __attribute__((noreturn))
 #define mi_decl_weak            __attribute__((weak))
+#if defined(__MINGW32__)
+#define mi_decl_hidden
+#else
 #define mi_decl_hidden          __attribute__((visibility("hidden")))
+#endif
 #if (__GNUC__ >= 4) || defined(__clang__)
 #define mi_decl_cold            __attribute__((cold))
 #else
@@ -80,6 +84,14 @@ terms of the MIT license. A copy of the license can be found in the file
 #define mi_likely(x)       (x)
 #endif
 
+#if (defined(__GNUC__) && (__GNUC__ >= 7)) || defined(__clang__) // includes clang and icc
+#define mi_decl_maybe_unused    __attribute__((unused))
+#elif __cplusplus >= 201703L    // c++17
+#define mi_decl_maybe_unused    [[maybe_unused]]
+#else
+#define mi_decl_maybe_unused
+#endif
+
 #ifndef __has_builtin
 #define __has_builtin(x)    0
 #endif
@@ -105,8 +117,8 @@ int         _mi_vsnprintf(char* buf, size_t bufsize, const char* fmt, va_list ar
 int         _mi_snprintf(char* buf, size_t buflen, const char* fmt, ...);
 char        _mi_toupper(char c);
 int         _mi_strnicmp(const char* s, const char* t, size_t n);
-void        _mi_strlcpy(char* dest, const char* src, size_t dest_size);
-void        _mi_strlcat(char* dest, const char* src, size_t dest_size);
+bool        _mi_strlcpy(char* dest, const char* src, size_t dest_size);  // returns true if the full string was copied
+bool        _mi_strlcat(char* dest, const char* src, size_t dest_size);  // returns true if the full string was catenated
 size_t      _mi_strlen(const char* s);
 size_t      _mi_strnlen(const char* s, size_t max_len);
 bool        _mi_streq(const char* s, const char* t);
@@ -239,7 +251,7 @@ bool       _mi_segment_attempt_reclaim(mi_heap_t* heap, mi_segment_t* segment);
 bool       _mi_segment_visit_blocks(mi_segment_t* segment, int heap_tag, bool visit_blocks, mi_block_visit_fun* visitor, void* arg);
 
 // "page.c"
-void*       _mi_malloc_generic(mi_heap_t* heap, size_t size, bool zero, size_t huge_alignment, size_t* usable)  mi_attr_noexcept mi_attr_malloc;
+void*       _mi_malloc_generic(mi_heap_t* heap, size_t size, bool zero, size_t huge_alignment, mi_page_t** ppage)  mi_attr_noexcept mi_attr_malloc;
 
 void        _mi_page_retire(mi_page_t* page) mi_attr_noexcept;                  // free the page if there are no other pages with many free blocks
 void        _mi_page_unfull(mi_page_t* page);
@@ -282,17 +294,17 @@ mi_msecs_t  _mi_clock_end(mi_msecs_t start);
 mi_msecs_t  _mi_clock_start(void);
 
 // "alloc.c"
-void*       _mi_page_malloc_zero(mi_heap_t* heap, mi_page_t* page, size_t size, bool zero, size_t* usable) mi_attr_noexcept;  // called from `_mi_malloc_generic`
+void*       _mi_page_malloc_zero(mi_heap_t* heap, mi_page_t* page, size_t size, bool zero, mi_page_t** ppage) mi_attr_noexcept;  // called from `_mi_malloc_generic`
 void*       _mi_page_malloc(mi_heap_t* heap, mi_page_t* page, size_t size) mi_attr_noexcept;                  // called from `_mi_heap_malloc_aligned`
 void*       _mi_page_malloc_zeroed(mi_heap_t* heap, mi_page_t* page, size_t size) mi_attr_noexcept;           // called from `_mi_heap_malloc_aligned`
 void*       _mi_heap_malloc_zero(mi_heap_t* heap, size_t size, bool zero) mi_attr_noexcept;
-void*       _mi_heap_malloc_zero_ex(mi_heap_t* heap, size_t size, bool zero, size_t huge_alignment, size_t* usable) mi_attr_noexcept;     // called from `_mi_heap_malloc_aligned`
-void*       _mi_heap_realloc_zero(mi_heap_t* heap, void* p, size_t newsize, bool zero, size_t* usable_pre, size_t* usable_post) mi_attr_noexcept;
+void*       _mi_heap_malloc_zero_ex(mi_heap_t* heap, size_t size, bool zero, size_t huge_alignment, mi_page_t** ppage) mi_attr_noexcept;     // called from `_mi_heap_malloc_aligned`
+void*       _mi_heap_realloc_zero(mi_heap_t* heap, void* p, size_t newsize, bool zero, size_t* pblock_size_pre, size_t* pblock_size_post) mi_attr_noexcept;
 mi_block_t* _mi_page_ptr_unalign(const mi_page_t* page, const void* p);
 bool        _mi_free_delayed_block(mi_block_t* block);
 void        _mi_free_generic(mi_segment_t* segment, mi_page_t* page, bool is_local, void* p) mi_attr_noexcept;  // for runtime integration
 void        _mi_padding_shrink(const mi_page_t* page, const mi_block_t* block, const size_t min_size);
-
+size_t      _mi_page_usable_size(const mi_page_t* page, const void* p) mi_attr_noexcept;
 #if MI_DEBUG>1
 bool        _mi_page_is_valid(mi_page_t* page);
 #endif
@@ -379,6 +391,11 @@ static inline bool _mi_is_power_of_two(uintptr_t x) {
   return ((x & (x - 1)) == 0);
 }
 
+// valid alignment values are as posix memalign: <https://en.cppreference.com/c/memory/aligned_alloc#Notes>
+static inline bool mi_alignment_is_valid(size_t alignment) {
+  return ((alignment!=0) && _mi_is_power_of_two(alignment));
+}
+
 // Is a pointer aligned?
 static inline bool _mi_is_aligned(void* p, size_t alignment) {
   return (alignment==0 || ((uintptr_t)p % alignment) == 0);
@@ -387,7 +404,7 @@ static inline bool _mi_is_aligned(void* p, size_t alignment) {
 // Align upwards
 static inline uintptr_t _mi_align_up(uintptr_t sz, size_t alignment) {
   mi_assert_internal(alignment != 0);
-  uintptr_t mask = alignment - 1;
+  const uintptr_t mask = alignment - 1;
   if ((alignment & mask) == 0) {  // power of two?
     return ((sz + mask) & ~mask);
   }
@@ -396,28 +413,27 @@ static inline uintptr_t _mi_align_up(uintptr_t sz, size_t alignment) {
   }
 }
 
-// Align downwards
-static inline uintptr_t _mi_align_down(uintptr_t sz, size_t alignment) {
-  mi_assert_internal(alignment != 0);
-  uintptr_t mask = alignment - 1;
-  if ((alignment & mask) == 0) { // power of two?
-    return (sz & ~mask);
-  }
-  else {
-    return ((sz / alignment) * alignment);
-  }
-}
-
 // Align a pointer upwards
 static inline void* _mi_align_up_ptr(const void* p, size_t alignment) {
   return (void*)_mi_align_up((uintptr_t)p, alignment);
 }
 
-// Align a pointer downwards
-static inline void* _mi_align_down_ptr(void* p, size_t alignment) {
-  return (void*)_mi_align_down((uintptr_t)p, alignment);
+// Align down
+static inline uintptr_t _mi_align_down(uintptr_t sz, size_t alignment) {
+  mi_assert_internal(alignment != 0);
+  const uintptr_t mask = alignment - 1;
+  if ((alignment & mask) == 0) {  // power of two?
+    return (sz & ~mask);
+  }
+  else {
+    return ((sz/alignment)*alignment);
+  }
 }
 
+// Align a pointer downwards
+static inline void* _mi_align_down_ptr(const void* p, size_t alignment) {
+  return (void*)_mi_align_down((uintptr_t)p, alignment);
+}
 
 // Divide upwards: `s <= _mi_divide_up(s,d)*d < s+d`.
 static inline uintptr_t _mi_divide_up(uintptr_t size, size_t divider) {
@@ -456,10 +472,10 @@ static inline size_t _mi_wsize_from_size(size_t size) {
 #undef _CLOCK_T
 #endif
 static inline bool mi_mul_overflow(size_t count, size_t size, size_t* total) {
-  #if (SIZE_MAX == ULONG_MAX)
-    return __builtin_umull_overflow(count, size, (unsigned long *)total);
-  #elif (SIZE_MAX == UINT_MAX)
+  #if (SIZE_MAX == UINT_MAX)
     return __builtin_umul_overflow(count, size, (unsigned int *)total);
+  #elif (SIZE_MAX == ULONG_MAX)
+    return __builtin_umull_overflow(count, size, (unsigned long *)total);
   #else
     return __builtin_umulll_overflow(count, size, (unsigned long long *)total);
   #endif
@@ -696,7 +712,8 @@ static inline void mi_page_set_in_full(mi_page_t* page, bool in_full) {
   if (page->flags.x.in_full != in_full) {
     // optimize: maintain pages_full_size to avoid visiting the full queue (issue #1220)
     mi_heap_t* const heap = mi_page_heap(page);
-    const size_t size = page->capacity * mi_page_block_size(page);
+    mi_assert_internal(page->capacity==page->reserved);
+    const size_t size = page->reserved * mi_page_block_size(page);
     if (in_full) { heap->pages_full_size += size; }
             else { mi_assert_internal(size <= heap->pages_full_size); heap->pages_full_size -= size; }
   }
@@ -733,19 +750,26 @@ static inline bool mi_heap_malloc_use_guarded(mi_heap_t* heap, size_t size) {
     heap->guarded_sample_count = count;
     return false;
   }
-  else if (size >= heap->guarded_size_min && size <= heap->guarded_size_max) {
-    // use guarded allocation
-    heap->guarded_sample_count = heap->guarded_sample_rate;  // reset
-    return (heap->guarded_sample_rate != 0);
-  }
   else {
-    // failed size criteria, rewind count (but don't write to an empty heap)
-    if (heap->guarded_sample_rate != 0) { heap->guarded_sample_count = 1; }
-    return false;
+    // count == 0
+    const size_t rate = heap->guarded_sample_rate;
+    if (rate == 0) {
+      return false; // don't write to an empty theap
+    }
+    else if (size >= heap->guarded_size_min && size <= heap->guarded_size_max) {
+      // use guarded allocation
+      heap->guarded_sample_count = rate;  // reset
+      return true;
+    }
+    else {
+      // failed size criteria, rewind count
+      heap->guarded_sample_count = 1;
+      return false;
+    }
   }
 }
 
-mi_decl_restrict void* _mi_heap_malloc_guarded(mi_heap_t* heap, size_t size, bool zero) mi_attr_noexcept;
+mi_decl_restrict void* _mi_heap_malloc_guarded(mi_heap_t* heap, size_t size, bool zero, mi_page_t** ppage) mi_attr_noexcept;
 
 #endif
 

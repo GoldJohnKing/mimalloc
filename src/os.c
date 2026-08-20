@@ -91,7 +91,6 @@ void _mi_os_init(void) {
 bool _mi_os_decommit(void* addr, size_t size);
 bool _mi_os_commit(void* addr, size_t size, bool* is_zero);
 
-
 /* -----------------------------------------------------------
   aligned hinting
 -------------------------------------------------------------- */
@@ -292,7 +291,7 @@ static void* mi_os_prim_alloc_aligned(size_t size, size_t alignment, bool commit
       // note: this is dangerous on Windows as VirtualFree needs the actual base pointer
       // this is handled though by having the `base` field in the memid's
       os_base = p; // remember the base
-      os_size = over_size;
+      os_size = size; // not over_size as otherwise we over-decrement commit stats on free
       p = _mi_align_up_ptr(p, alignment);
 
       // explicitly commit only the aligned part
@@ -419,6 +418,7 @@ void* _mi_os_alloc_aligned_at_offset(size_t size, size_t alignment, size_t offse
     void* const p = (uint8_t*)start + extra;
     mi_assert(_mi_is_aligned((uint8_t*)p + offset, alignment));
     // decommit the overallocation at the start
+    // note: this double counts the decommit when freeing `memid`. Should we keep commit size in the memid as well?
     if (commit && extra >= _mi_os_page_size()) {
       _mi_os_decommit(start, extra);
     }
@@ -620,7 +620,11 @@ static mi_decl_cache_align _Atomic(uintptr_t)  mi_huge_start; // = 0
 // Claim an aligned address range for huge pages
 static uint8_t* mi_os_claim_huge_pages(size_t pages, size_t* total_size) {
   if (total_size != NULL) *total_size = 0;
-  const size_t size = pages * MI_HUGE_OS_PAGE_SIZE;
+  size_t size = 0;
+  if (mi_mul_overflow(pages,MI_HUGE_OS_PAGE_SIZE,&size)) {
+    _mi_warning_message("too many huge pages requested: %zu\n", pages);
+    return NULL;
+  }
 
   uintptr_t start = 0;
   uintptr_t end = 0;
@@ -696,7 +700,7 @@ void* _mi_os_alloc_huge_os_pages(size_t pages, int numa_node, mi_msecs_t max_mse
     if (max_msecs > 0) {
       mi_msecs_t elapsed = _mi_clock_end(start_t);
       if (page >= 1) {
-        mi_msecs_t estimate = ((elapsed / (page+1)) * pages);
+        mi_msecs_t estimate = ((elapsed / (page==0 ? 1 : page)) * pages);
         if (estimate > 2*max_msecs) { // seems like we are going to timeout, break
           elapsed = max_msecs + 1;
         }

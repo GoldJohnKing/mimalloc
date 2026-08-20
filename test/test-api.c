@@ -38,6 +38,7 @@ we therefore test the API over various inputs. Please add more tests :-)
 
 #include "testhelper.h"
 
+
 // ---------------------------------------------------------------------------
 // Test functions
 // ---------------------------------------------------------------------------
@@ -51,12 +52,17 @@ bool test_stl_heap_allocator2(void);
 bool test_stl_heap_allocator3(void);
 bool test_stl_heap_allocator4(void);
 
-bool mem_is_zero(uint8_t* p, size_t size) {
+static bool test_zero_aligned_first(void);
+
+static bool mem_has_vals(const uint8_t* p, size_t size, uint8_t val) {
   if (p==NULL) return false;
   for (size_t i = 0; i < size; ++i) {
-    if (p[i] != 0) return false;
+    if (p[i] != val) return false;
   }
   return true;
+}
+static bool mem_is_zero(const void* p, size_t size) {
+  return mem_has_vals((const uint8_t*)p,size,0);
 }
 
 // ---------------------------------------------------------------------------
@@ -65,14 +71,25 @@ bool mem_is_zero(uint8_t* p, size_t size) {
 int main(void) {
   mi_option_disable(mi_option_verbose);
 
-  CHECK_BODY("malloc-aligned9a") { // test large alignments
-    void* p = mi_zalloc_aligned(1024 * 1024, 2);
-    mi_free(p);
-    p = mi_zalloc_aligned(1024 * 1024, 2);
-    mi_free(p);
-    result = true;
-  };
-  
+  #if 0
+  #ifdef __cplusplus
+  CHECK_BODY("c++ new-handler") {
+    std::set_new_handler([]{ throw std::bad_alloc(); });
+    void* p = mi_new_nothrow(size_t(1)<<(MI_SIZE_BITS-2));
+    result = (p==NULL);
+  }
+  CHECK_BODY("c++ new handler2") {
+    try {
+      void* p = mi_new_n(SIZE_MAX/2, 4);
+      (void)(p);
+      result = false;
+    }
+    catch(std::bad_alloc) {
+      result = true;
+    }
+  }
+  #endif
+  #endif
 
   // ---------------------------------------------------
   // Malloc
@@ -93,16 +110,26 @@ int main(void) {
     // use (size_t)&mi_calloc to get some number without triggering compiler warnings
     result = (mi_calloc((size_t)&mi_calloc,SIZE_MAX/1000) == NULL);
   };
-  CHECK_BODY("calloc0") {
-    void* p = mi_calloc(0,1000);
-    result = (mi_usable_size(p) <= 16);
-    mi_free(p);
-  };
   CHECK_BODY("malloc-large") {   // see PR #544.
     void* p = mi_malloc(67108872);
     mi_free(p);
   };
-
+  
+  CHECK_BODY("calloc0") {
+    void* p = mi_calloc(0,1000);
+    const size_t usable = mi_usable_size(p);    
+    result = (usable <= 16);
+    mi_free(p);
+  };
+  
+  CHECK_BODY("mi_urealloc_invalid") {
+    void* p = mi_malloc(64);
+    size_t pre, post;
+    void* q = mi_urealloc((char*)p + 3, 32, &pre, &post);
+    mi_free(p);
+    result = (q==NULL || q==(uint8_t*)p+3);
+  }
+  
   // ---------------------------------------------------
   // Extended
   // ---------------------------------------------------
@@ -200,6 +227,7 @@ int main(void) {
     }
     result = ok;
   };
+  
   CHECK_BODY("malloc-aligned9") { // test large alignments
     bool ok = true;
     void* p[8];
@@ -220,6 +248,15 @@ int main(void) {
     }
     result = ok;
   };
+  
+  CHECK_BODY("malloc-aligned9a") { // test large alignments
+    void* p = mi_zalloc_aligned(1024 * 1024, 2);
+    mi_free(p);
+    p = mi_zalloc_aligned(1024 * 1024, 2);
+    mi_free(p);
+    result = true;
+  };
+  
   CHECK_BODY("malloc-aligned10") {
     bool ok = true;
     void* p[10+1];
@@ -234,17 +271,20 @@ int main(void) {
     }
     result = ok;
   }
+  
   CHECK_BODY("malloc_aligned11") {
     mi_heap_t* heap = mi_heap_new();
     void* p = mi_heap_malloc_aligned(heap, 33554426, 8);
     result = mi_heap_contains_block(heap, p);
     mi_heap_destroy(heap);
   }
+  
   CHECK_BODY("mimalloc-aligned12") {
     void* p = mi_malloc_aligned(0x100, 0x100);
     result = (((uintptr_t)p % 0x100) == 0); // #602
     mi_free(p);
   }
+  
   CHECK_BODY("mimalloc-aligned13") {
     bool ok = true;
     for( size_t size = 1; size <= (MI_SMALL_SIZE_MAX * 2) && ok; size++ ) {
@@ -298,6 +338,20 @@ int main(void) {
     mi_free(p);
   };
 
+  CHECK_BODY("rezalloc_aligned_zeros") {  // issue #763
+    size_t alignment = 1024;
+    size_t n = 1024 * 6;
+    void* ptr = mi_zalloc_aligned(n, alignment);
+    assert(mem_is_zero(ptr,n));
+    memset(ptr,123,n/2);
+    
+    ptr = mi_rezalloc_aligned(ptr, n/2, alignment);
+    assert(mem_has_vals((uint8_t*)ptr,n/2,123));
+    
+    ptr = mi_rezalloc_aligned(ptr, n, alignment);
+    assert(mem_has_vals((uint8_t*)ptr,n/2,123));
+    result = mem_is_zero((uint8_t*)ptr + n/2, n/2);    
+  }
   // ---------------------------------------------------
   // Reallocation
   // ---------------------------------------------------
@@ -351,6 +405,14 @@ int main(void) {
   CHECK("heap_destroy", test_heap1());
   CHECK("heap_delete", test_heap2());
 
+  
+  // ---------------------------------------------------
+  // Threads
+  // ---------------------------------------------------
+  CHECK_BODY("zero_aligned_first") {
+    result = mi_run_on_thread(&test_zero_aligned_first);
+  }
+  
   //mi_stats_print(NULL);
 
   // ---------------------------------------------------
@@ -483,3 +545,21 @@ bool test_stl_heap_allocator4(void) {
   return true;
 #endif
 }
+
+
+// ---------------------------------------------------------------------------
+// Test a zero size aligned allocation as the very first allocation of a fresh thread.
+// ---------------------------------------------------------------------------
+
+static bool test_zero_aligned_first(void) {
+  void* p = mi_malloc_aligned(0, 16);     // must be the first mimalloc call on this thread
+  bool res = (p != NULL && (uintptr_t)(p) % 16 == 0);
+  mi_free(p);
+  p = mi_zalloc_aligned(0, 32);
+  res = res && (p != NULL && (uintptr_t)(p) % 32 == 0);
+  mi_free(p);
+  return res;
+}
+
+
+

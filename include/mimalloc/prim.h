@@ -23,7 +23,7 @@ terms of the MIT license. A copy of the license can be found in the file
 // OS memory configuration
 typedef struct mi_os_mem_config_s {
   size_t  page_size;              // default to 4KiB
-  size_t  large_page_size;        // 0 if not supported, usually 2MiB (4MiB on Windows)
+  size_t  large_page_size;        // 0 if not supported, usually 2MiB 
   size_t  alloc_granularity;      // smallest allocation size (usually 4KiB, on Windows 64KiB)
   size_t  physical_memory_in_kib; // physical memory size in KiB
   size_t  virtual_address_bits;   // usually 48 or 56 bits on 64-bit systems. (used to determine secure randomization)
@@ -275,7 +275,7 @@ static inline void mi_prim_tls_slot_set(size_t slot, void* value) mi_attr_noexce
     #if    (defined(__GNUC__) && (__GNUC__ >= 7)  && defined(__aarch64__)) /* aarch64 for older gcc versions (issue #851) */ \
         || (defined(__GNUC__) && (__GNUC__ >= 7)  && defined(__riscv)) \
         || (defined(__GNUC__) && (__GNUC__ >= 11) && defined(__x86_64__)) \
-        || (defined(__clang_major__) && (__clang_major__ >= 14) && (defined(__aarch64__) || defined(__x86_64__)))
+        || (defined(__clang_major__) && (__clang_major__ >= 14) && (defined(__aarch64__) || defined(__x86_64__) || defined(__riscv))) /* pr #1363 */
       #define MI_USE_BUILTIN_THREAD_POINTER  1
     #endif
   #endif
