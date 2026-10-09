@@ -430,7 +430,7 @@ typedef union mi_used_s {
     uint16_t last_used;
     uint16_t last_alloc;        
     #endif
-  } debug_le;
+  } le;  // little-endian layout
 } mi_used_t;
 
 static inline size_t mi_xused_used_count(mi_used_t xused)    { return (xused.used_alloc & 0xFFFF); }
@@ -580,6 +580,7 @@ typedef struct mi_page_queue_s {
   mi_page_t* last;
   size_t     count;
   size_t     block_size;
+  size_t     xcollect_score;          // how often full pages here revived by cross-thread frees
 } mi_page_queue_t;
 
 // Random context
@@ -623,6 +624,7 @@ struct mi_theap_s {
   bool                  allow_page_reclaim;                  // `true` if this theap can reclaim abandoned pages
   bool                  allow_page_abandon;                  // `true` if this theap can abandon pages to reduce memory footprint
   bool                  is_detached;                         // `true` if `tld->thread_id == MI_THREADID_DETACHED`
+  bool                  profile_disabled;                    // if `true`, this theap is permanently excluded from profiling
 
   // sampling
   size_t                sample_countdown;                    // sample countdown in requested bytes (don't change the field order; see `internal.h:_mi_theap_get_free_small_page`)
@@ -634,6 +636,8 @@ struct mi_theap_s {
   size_t                guarded_sample_countdown;            // countdown in requested bytes for guarded objects
   size_t                guarded_size_min;                    // minimal size for guarded objects
   size_t                guarded_size_max;                    // maximal size for guarded objects
+  uintptr_t             profiler_reserved1;                  // two fields available for a profiler (to avoid thread locals)
+  uintptr_t             profiler_reserved2;
   
   // stats
   unsigned long long    heartbeat;                           // monotonic heartbeat count

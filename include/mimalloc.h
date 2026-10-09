@@ -8,7 +8,7 @@ terms of the MIT license. A copy of the license can be found in the file
 #ifndef MIMALLOC_H
 #define MIMALLOC_H
 
-#define MI_MALLOC_VERSION 30503   // major + 2 digits minor + 2 digits patch
+#define MI_MALLOC_VERSION 30504   // major + 2 digits minor + 2 digits patch
 
 // ------------------------------------------------------
 // Compiler specific attributes
@@ -143,6 +143,7 @@ mi_decl_export void mi_free_small(void* p) mi_attr_noexcept;
 
 // As `mi_free_small` but `p` should not be a NULL pointer.
 mi_decl_export void mi_free_small_nonnull(void* p) mi_attr_noexcept;
+
 
 
 // -------------------------------------------------------------------------------------
@@ -496,6 +497,10 @@ typedef enum mi_option_e {
   mi_option_arena_max_object_size,      // set maximal object size that can be allocated in an arena (in KiB) (=2GiB on 64-bit). 
   mi_option_arena_is_numa_local,        // experimental: associate local numa node with an initial arena allocation
   mi_option_collect_merges_stats,       // on each theap collection, the theap stats are merged automatically with the parent heap
+  mi_option_profile_alloc_interval,     // number of allocated bytes between automatic dumps of the `MIMALLOC_PROFILE` heap profiler (internally, this value is in KiB; use `mi_option_get_size`) (=0, disabled)
+  mi_option_profile_inuse_interval,     // number of in-use bytes grown between automatic dumps of the `MIMALLOC_PROFILE` heap profiler (internally, this value is in KiB; use `mi_option_get_size`) (=0, disabled)
+  mi_option_profile_time_interval,      // number of seconds between automatic dumps of the `MIMALLOC_PROFILE` heap profiler (=0, disabled)
+  mi_option_profile_sample_rate,        // sample rate (in bytes) for the `MIMALLOC_PROFILE` heap profiler (internally, this value is in KiB; use `mi_option_get_size`) (=16 KiB)
   _mi_option_last,
   // legacy option names
   mi_option_large_os_pages = mi_option_allow_large_os_pages,
@@ -621,6 +626,13 @@ static inline void mi_free_csize_aligned_nonnull(void* p, size_t size, size_t al
   assert(p!=NULL);
   if (aligned <= size && size <= MI_SMALL_SIZE_MAX) { mi_free_small_nonnull(p); } else { mi_free(p); }
 }
+
+// As `mi_free_small` but `p` must be allocated on a page owned by the current thread (be very careful!)
+mi_decl_export void mi_free_small_local(void* p) mi_attr_noexcept;
+
+// As `mi_free_small_local` but `p` cannot be NULL as well.
+mi_decl_export void mi_free_small_local_nonnull(void* p) mi_attr_noexcept;
+
 
 // ------------------------------------------------------
 // C++ standard library allocator interface.

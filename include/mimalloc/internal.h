@@ -127,6 +127,8 @@ bool          _mi_strlcat(char* dest, const char* src, size_t dest_size); // ret
 size_t        _mi_strlen(const char* s);
 size_t        _mi_strnlen(const char* s, size_t max_len);
 char*         _mi_strnstr(char* s, size_t max_len, const char* pat);
+const char*   _mi_strchr(const char* s, char c);
+const char*   _mi_strrchr(const char* s, char c);
 bool          _mi_streq(const char* s, const char* t);
 int           _mi_getenv(const char* name, char* result, size_t result_size);
 void          _mi_detect_cpu_features(void);
@@ -140,6 +142,8 @@ void          _mi_verbose_message(const char* fmt, ...);
 void          _mi_trace_message(const char* fmt, ...);
 void          _mi_options_init(void);
 void          _mi_options_post_init(void);
+void          mi_profiler_init(void);      // in `src/profile/pprof.c`: starts a `MIMALLOC_PROFILE`-driven profiler if that environment variable is set
+void          mi_profile_done(void);       // in `src/profile/pprof.c`: stops/dumps/deletes the profiler started by `mi_profiler_init` (if any)
 long          _mi_option_get_fast(mi_option_t option);
 void          _mi_error_message(int err, const char* fmt, ...);
 
@@ -270,15 +274,15 @@ mi_page_t*    _mi_safe_ptr_page(const void* p);
 void          _mi_page_map_unsafe_destroy(void);
 
 // "page.c"
-void*         _mi_malloc_generic(mi_theap_t* theap, size_t size, size_t zero_huge_alignment, mi_page_t** ppage)  mi_attr_noexcept mi_attr_malloc;
-void*         _mi_malloc_generic_no_sample(mi_theap_t* theap, size_t size, bool zero, mi_page_t** ppage)  mi_attr_noexcept mi_attr_malloc;
+mi_decl_restrict void* _mi_malloc_generic(mi_theap_t* theap, size_t size, size_t zero_huge_alignment, mi_page_t** ppage) mi_attr_noexcept mi_attr_malloc;
+mi_decl_restrict void* _mi_malloc_generic_no_sample(mi_theap_t* theap, size_t size, bool zero, mi_page_t** ppage) mi_attr_noexcept mi_attr_malloc;
 
 void          _mi_page_retire(mi_page_t* page) mi_attr_noexcept;       // free the page if there are no other pages with many free blocks
 void          _mi_page_unfull(mi_page_t* page);
 void          _mi_page_free(mi_page_t* page, mi_page_queue_t* pq);     // free the page
 void          _mi_page_abandon(mi_page_t* page, mi_page_queue_t* pq);  // abandon the page, to be picked up by another thread...
 void          _mi_deferred_free(mi_theap_t* theap, bool force);
-void          _mi_page_free_collect(mi_page_t* page, bool force);
+bool          _mi_page_free_collect(mi_page_t* page, bool force);  // returns `true` if cross-thread free'd blocks were collected
 mi_block_t*   _mi_page_free_collect_partly(mi_page_t* page, mi_block_t* head);
 mi_decl_nodiscard bool _mi_page_init(mi_theap_t* theap, mi_page_t* page);
 bool          _mi_page_queue_is_valid(mi_theap_t* theap, const mi_page_queue_t* pq);
@@ -322,12 +326,11 @@ mi_msecs_t    _mi_clock_end(mi_msecs_t start);
 mi_msecs_t    _mi_clock_start(void);
 
 // "alloc.c"
-void*         _mi_page_malloc_zero(mi_theap_t* theap, mi_page_t* page, size_t size, bool zero) mi_attr_noexcept;                  // called from `_mi_theap_malloc_aligned`
-void*         _mi_theap_malloc_zero(mi_theap_t* theap, size_t size, bool zero, size_t huge_alignment, mi_page_t** ppage) mi_attr_noexcept;     // called from `_mi_theap_malloc_aligned`
+mi_decl_restrict void* _mi_page_malloc_zero(mi_theap_t* theap, mi_page_t* page, size_t size, bool zero) mi_attr_noexcept;                  // called from `_mi_theap_malloc_aligned`
+mi_decl_restrict void* _mi_theap_malloc_zero(mi_theap_t* theap, size_t size, bool zero, size_t huge_alignment, mi_page_t** ppage) mi_attr_noexcept;     // called from `_mi_theap_malloc_aligned`
 void*         _mi_theap_realloc_zero(mi_theap_t* theap, void* p, size_t newsize, bool zero) mi_attr_noexcept;
 mi_block_t*   _mi_page_ptr_unalign(const mi_page_t* page, const void* p);
 void          _mi_padding_shrink(const mi_page_t* page, const mi_block_t* block, const size_t min_size);
-
 
 // "free.c"
 void          _mi_free_subproc_safe(void* p) mi_attr_noexcept;
@@ -351,6 +354,11 @@ size_t        _mi_theap_update_sample_rate(mi_theap_t* theap);
 mi_decl_restrict void* _mi_theap_malloc_profiled(mi_theap_t* theap, size_t size, uint64_t requested_since_last_sample, bool zero, mi_page_t** ppage) mi_attr_noexcept;
 void          _mi_page_profile_on_free(mi_page_t* page, mi_block_t* block, void* p);
 size_t        _mi_theap_set_profile_sample_rate(mi_theap_t* theap, size_t sample_rate);
+
+
+// "profile/pprof.c"
+void           _mi_pprof_profiler_init(void);
+void           _mi_pprof_profiler_done(void);
 
 
 // ------------------------------------------------------
@@ -397,7 +405,7 @@ void __mi_stat_adjust_decrease_mt(mi_stat_count_t* stat, uint64_t amount);
 // counters can just be increased
 static inline void __mi_stat_counter_increase_mt(mi_stat_counter_t* stat, uint64_t amount) {
   mi_assert_internal(amount<=INT64_MAX);
-  mi_atomic_addi64_relaxed(&stat->total, (int64_t)amount);
+  mi_atomic_volatile_addi64_relaxed(&stat->total, (int64_t)amount);
 }
 
 static inline void __mi_stat_counter_increase(mi_stat_counter_t* stat, uint64_t amount) {
@@ -683,6 +691,15 @@ static inline mi_page_t* _mi_theap_get_free_small_page(mi_theap_t* theap, size_t
 
 static inline bool mi_theap_is_detached(mi_theap_t* theap) {
   return (theap!=NULL && theap->tld->thread_id == MI_THREADID_DETACHED);
+}
+
+// permanently exclude a theap from profiling (mirrors `mi_heap_profile_disable` but at the theap level);
+// used for detached/meta theaps used to bootstrap thread/theap metadata, since sampling those can call
+// back into the profiler while allocating on a not yet (re-)initialized thread, causing deadlock.
+static inline void _mi_theap_profile_disable(mi_theap_t* theap) {
+  theap->profile_disabled = true;
+  theap->profile_sample_rate = 0;
+  theap->profile_sample_countdown = 0;
 }
 
 static inline bool mi_theap_matches_thread(mi_theap_t* theap) {
@@ -1474,6 +1491,10 @@ static inline size_t _mi_random_shuffle(size_t x) {
 // ---------------------------------------------------------------------------------
 // Provide our own `_mi_memcpy/set` for potential performance optimizations.
 // ---------------------------------------------------------------------------------
+
+static inline int _mi_memcmp(const void* dst, const void* src, size_t n) {
+  return memcmp(dst, src, n);
+}
 
 static inline void* _mi_memcpy(void* dst, const void* src, size_t n) {
   return memcpy(dst, src, n);

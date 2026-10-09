@@ -233,7 +233,7 @@ jobs:
         run: |
           CC=clang CXX=clang++ cmake . -B out/debug-tsan -DCMAKE_BUILD_TYPE=Debug -DMI_DEBUG=FULL -DMI_DEBUG_TSAN=ON 
           cmake --build out/debug-tsan --parallel 8 --config Debug
-          ctest --test-dir out/debug-tsan --verbose --timeout 240 -C Debug
+          ctest --test-dir out/debug-tsan --verbose --timeout 360 -C Debug
 
       - name: Debug, Guarded
         if: matrix.tests == 'extra' && runner.os != 'macOS'
@@ -400,6 +400,7 @@ jobs:
             cmake
             ninja
             clang
+            libunwind-dev
 
       - name: Alpine riscv64, Release clang
         if: matrix.tests == 'alpine-riscv64'
@@ -459,6 +460,7 @@ jobs:
           packages: |
             build-base
             cmake
+            libunwind-dev
 
       - name: Alpine x64, Debug
         if: matrix.tests == 'alpine-x64'
@@ -493,6 +495,7 @@ jobs:
           packages: |
             build-base
             cmake
+            libunwind-dev
 
       - name: Alpine arm32, Debug
         if: matrix.tests == 'alpine-arm32'

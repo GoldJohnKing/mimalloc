@@ -131,7 +131,8 @@ set(mi_sources
     src/stats.c
     src/subproc.c
     src/theap.c
-    src/threadlocal.c)  
+    src/threadlocal.c
+    src/profile/pprof.c)  
 
 set(mi_cflags "")
 set(mi_cflags_static "")            # extra flags for a static library build
@@ -734,13 +735,6 @@ if(MI_ARCH MATCHES "riscv")
   endif()
 endif()
 
-if(NOT WIN32)
-  CHECK_INCLUDE_FILES("execinfo.h" MI_HAS_EXECINFOH)
-  if(MI_HAS_EXECINFOH) 
-    list(APPEND mi_defines MI_HAS_EXECINFOH=1)
-  endif()
-endif()
-
 # On Haiku use `-DCMAKE_INSTALL_PREFIX` instead, issue #788
 # if(CMAKE_SYSTEM_NAME MATCHES "Haiku")
 #   SET(CMAKE_INSTALL_LIBDIR ~/config/non-packaged/lib)
@@ -904,7 +898,51 @@ endif()
 # set language for source files now
 if(MI_USE_CXX)
   set_source_files_properties(${mi_sources} PROPERTIES LANGUAGE CXX )
-  set_source_files_properties(src/static.c test/test-api.c test/test-api-fill.c test/test-stress.c test/test-stress-heaps.c  test/test-stress-subprocs.c test/test-profile.c PROPERTIES LANGUAGE CXX )
+  set_source_files_properties(src/static.c test/test-api.c test/test-api-fill.c test/test-stress.c test/test-stress-heaps.c  test/test-stress-subprocs.c test/test-stress-pprof.c test/test-profile.c test/test-pprof.c PROPERTIES LANGUAGE CXX )
+endif()
+
+# platform specific headers that are only needed for profiling support
+if(NOT WIN32 AND MI_PROFILE)
+  CHECK_INCLUDE_FILES("unistd.h" MI_HAS_UNISTDH)
+  if(MI_HAS_UNISTDH)
+    list(APPEND mi_defines MI_HAS_UNISTDH=1)
+  endif()
+  CHECK_INCLUDE_FILES("execinfo.h" MI_HAS_EXECINFOH)
+  if(MI_HAS_EXECINFOH) 
+    list(APPEND mi_defines MI_HAS_EXECINFOH=1)    
+    # On FreeBSD (and some other BSDs) `backtrace`/`backtrace_symbols` are not part of
+    # libc but live in a separate `libexecinfo` that must be linked explicitly.
+    if(CMAKE_SYSTEM_NAME MATCHES "BSD|DragonFly")
+      find_link_library("execinfo" MI_LIB_EXECINFO)
+      if(MI_LIB_EXECINFO)
+        list(APPEND mi_libraries "${MI_LIB_EXECINFO}")
+      endif()
+    endif()    
+  else()
+    # No `execinfo.h` available (e.g. musl-based Linux distributions such as Alpine
+    # do not implement `backtrace`); fall back to `libunwind` if it is installed.
+    CHECK_INCLUDE_FILES("libunwind.h" MI_HAS_LIBUNWINDH)
+    if(MI_HAS_LIBUNWINDH)
+      find_link_library("unwind" MI_LIB_UNWIND)
+      if(MI_LIB_UNWIND)
+        list(APPEND mi_defines MI_HAS_LIBUNWINDH=1)
+        list(APPEND mi_libraries "${MI_LIB_UNWIND}")
+      endif()
+    else()
+      message(WARNING "No backtrace support available: neither execinfo.h nor libunwind.h found.")
+      if(EXISTS "/etc/alpine-release")
+        message(STATUS "(On Alpine Linux, use `apk add libunwind-dev` to add the libunwind library)")
+      endif()
+    endif()
+  endif()
+  # FreeBSD (and DragonFly) need `kinfo_getvmmap` (in `libutil`) to collect the
+  # process's memory mappings (used for module/library info in dumped profiles).
+  if(CMAKE_SYSTEM_NAME MATCHES "FreeBSD|DragonFly")
+    find_link_library("util" MI_LIB_UTIL)
+    if(MI_LIB_UTIL)
+      list(APPEND mi_libraries "${MI_LIB_UTIL}")
+    endif()
+  endif()
 endif()
 
 
@@ -1151,7 +1189,7 @@ if (MI_BUILD_TESTS)
   enable_testing()
 
   # static link tests
-  foreach(TEST_NAME api api-fill stress-heaps stress-subprocs stress profile)
+  foreach(TEST_NAME api api-fill stress-heaps stress-subprocs stress stress-pprof profile pprof)
     add_executable(mimalloc-test-${TEST_NAME} test/test-${TEST_NAME}.c)
     target_compile_definitions(mimalloc-test-${TEST_NAME} PRIVATE ${mi_defines})
     target_compile_options(mimalloc-test-${TEST_NAME} PRIVATE ${mi_cflags})
@@ -1163,11 +1201,13 @@ if (MI_BUILD_TESTS)
     else()
       message(STATUS "cannot build TSAN tests without MI_BUILD_SHARED being enabled")
     endif()
-    if(MI_GUARDED AND NOT (TEST_NAME STREQUAL "profile"))
+    if(MI_GUARDED AND NOT (TEST_NAME STREQUAL "profile" OR TEST_NAME STREQUAL "pprof" OR TEST_NAME STREQUAL "stress-pprof"))
     add_test(NAME test-${TEST_NAME} COMMAND ${CMAKE_COMMAND} -E env MIMALLOC_GUARDED_SAMPLE_RATE=1024 $<TARGET_FILE:mimalloc-test-${TEST_NAME}>)
     elseif(TEST_NAME STREQUAL "stress-heaps")
     add_test(NAME test-${TEST_NAME} COMMAND ${CMAKE_COMMAND} -E env MIMALLOC_ARENA_EAGER_COMMIT=0 MIMALLOC_PAGE_COMMIT_ON_DEMAND=0 $<TARGET_FILE:mimalloc-test-${TEST_NAME}>)
-    elseif(NOT MI_PROFILE AND (TEST_NAME STREQUAL "profile"))
+    elseif((NOT MI_PROFILE) AND (TEST_NAME STREQUAL "profile" OR TEST_NAME STREQUAL "pprof" OR TEST_NAME STREQUAL "stress-pprof"))
+    # don't add as a test
+    elseif(NOT APPLE AND (TEST_NAME STREQUAL "pprof" OR TEST_NAME STREQUAL "stress-pprof"))
     # don't add as a test
     else()
     add_test(NAME test-${TEST_NAME} COMMAND mimalloc-test-${TEST_NAME})

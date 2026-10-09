@@ -219,7 +219,7 @@ mi_decl_export bool mi_heap_profile(mi_heap_t* heap, mi_profiler_t* profiler) {
 }
 
 mi_decl_export void mi_heap_profile_disable(mi_heap_t* heap) {
-  static mi_profiler_t mi_nosample_profiler = { NULL, 0, MI_SAMPLE_RATE_MAX, NULL, NULL, NULL };
+  static mi_profiler_t mi_nosample_profiler = { NULL, 0, MI_SAMPLE_RATE_MAX, NULL, NULL, NULL, NULL };
   mi_heap_set_profiler(heap,NULL);                   // first clear any previous one
   mi_heap_set_profiler(heap,&mi_nosample_profiler);  // and then install the nosample one
 }
@@ -259,6 +259,16 @@ bool mi_profiler_start(mi_profiler_t* profiler ) {
 }
 
 bool mi_profiler_stop(mi_profiler_t* profiler) {
-  if (profiler==NULL) return true;
+  if (profiler==NULL) return false;
   return mi_profiler_set_enabled(profiler,false);
 }
+
+void mi_profiler_snapshot(mi_profiler_t* profiler) {
+  if (profiler==NULL) return;
+  if (profiler->on_snapshot==NULL) return;
+  static mi_atomic_guard_t guard;
+  mi_atomic_guard(&guard) {
+    (*profiler->on_snapshot)(profiler);
+  }
+}
+
