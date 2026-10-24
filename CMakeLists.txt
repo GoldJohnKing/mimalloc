@@ -135,6 +135,11 @@ set(mi_sources
     src/profile/sample-profile.c
     src/profile/pprof.c)
 
+# Arma 3 CMA
+list(APPEND mi_sources
+    src/cma/cma_api.c
+    src/cma/cma_utils.c)
+
 set(mi_cflags "")
 set(mi_cflags_static "")            # extra flags for a static library build
 set(mi_cflags_dynamic "")           # extra flags for a shared-object library build

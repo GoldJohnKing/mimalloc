@@ -1,4 +1,9 @@
+#pragma once
+
+#ifdef __cplusplus
 extern "C" {
+#endif
+
 	__declspec(dllexport) size_t __stdcall MemTotalCommitted(void);
 
 	__declspec(dllexport) size_t __stdcall MemTotalReserved(void);
@@ -20,4 +25,7 @@ extern "C" {
 	__declspec(dllexport) void __stdcall MemFreeA(void* mem);
 
 	__declspec(dllexport) void __stdcall EnableHugePages(void);
+
+#ifdef __cplusplus
 }
+#endif

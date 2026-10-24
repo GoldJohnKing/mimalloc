@@ -63,3 +63,7 @@ terms of the MIT license. A copy of the license can be found in the file
 #include "profile/sample-guarded.c"
 #include "profile/sample-profile.c"
 #include "profile/pprof.c"
+
+// Arma 3 CMA
+#include "cma/cma_utils.c"
+#include "cma/cma_api.c"

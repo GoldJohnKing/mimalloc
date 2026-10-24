@@ -18,6 +18,8 @@ terms of the MIT license. A copy of the license can be found in the file
 #include <stdlib.h>  // atexit
 #include "mimalloc/heap/init.h"
 
+#include "../cma/cma_utils.h" // Arma 3 CMA
+
 // Empty page used to initialize the small free pages array
 static const mi_page_t mi_page_empty = {
   #if MI_PAGE_META_IS_ALIGNED
