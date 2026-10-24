@@ -11,4 +11,6 @@ void CmaSetMemoryAllocatorRuntimeOptions(void)
 	mi_option_set_default(mi_option_allow_large_os_pages, 1); // Always use large pages when available
 
 	mi_option_set_default(mi_option_purge_delay, -1); // Do not purge memory back to the OS
+
+	mi_option_set_default(mi_option_stats_merge_threshold, 4 * 1024 * 1024); // Merge thread heap stats less frequently to reduce runtime performance impact
 }
