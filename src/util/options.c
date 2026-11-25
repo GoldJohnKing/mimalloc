@@ -860,7 +860,7 @@ static void mi_option_env_warn(mi_option_t option, const mi_option_env_t* env) {
 
 static int mi_option_getenv(const char* name, char* result, size_t result_size) {
   char buf[64+1];
-  _mi_strlcpy(buf, "mimalloc_", sizeof(buf));
+  _mi_strlcpy(buf, "arma3_mimalloc_", sizeof(buf)); // Arma 3 CMA: use "ARMA3_MIMALLOC_" prefix to avoid affecting other mimalloc instances
   _mi_strlcat(buf, name, sizeof(buf));
   return _mi_getenv(buf, result, result_size);
 }
@@ -927,8 +927,8 @@ static void mi_env_scan_unknown(mi_env_scan_t* scan, const char* name, size_t le
 // Visit an environment `entry` of the form `name=value`
 static void mi_env_scan_entry(const char* entry, void* arg) {
   mi_env_scan_t* const scan = (mi_env_scan_t*)arg;
-  const size_t plen = 9;  // `mimalloc_`
-  if (_mi_strnicmp(entry, "mimalloc_", plen) != 0) return;
+  const size_t plen = 15;  // `mimalloc_` // Arma 3 CMA
+  if (_mi_strnicmp(entry, "arma3_mimalloc_", plen) != 0) return; // Arma 3 CMA: use "ARMA3_MIMALLOC_" prefix to avoid affecting other mimalloc instances
   const char* const name = entry + plen;
   size_t len = 0;
   while (name[len] != 0 && name[len] != '=') { len++; }
