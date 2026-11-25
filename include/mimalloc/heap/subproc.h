@@ -5,8 +5,8 @@ terms of the MIT license. A copy of the license can be found in the file
 "LICENSE" at the root of this distribution.
 -----------------------------------------------------------------------------*/
 #pragma once
-#ifndef MI_INTERNAL_SUBPROC_H
-#define MI_INTERNAL_SUBPROC_H
+#ifndef MI_HEAP_SUBPROC_H
+#define MI_HEAP_SUBPROC_H
 
 #include "../types.h"
 
@@ -19,6 +19,10 @@ mi_subproc_t* _mi_subproc_from_id(mi_subproc_id_t subproc_id);
 void          _mi_subprocs_unsafe_destroy_all(void);
 void          _mi_fork_init(void);
 void          _mi_fork_child(void);
+void          _mi_fork_child_zone(void);
+void          _mi_fork_child_try_collect(void);
+size_t        _mi_fork_epoch(void);
+bool          _mi_fork_is_torn(void);
 
 void*         _mi_meta_zalloc( mi_subproc_t* subproc, size_t size, mi_memid_t* memid );
 void*         _mi_meta_rezalloc( mi_subproc_t* subproc, void* p, size_t newsize, mi_memid_t* memid );

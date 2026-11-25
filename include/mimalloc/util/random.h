@@ -5,17 +5,15 @@ terms of the MIT license. A copy of the license can be found in the file
 "LICENSE" at the root of this distribution.
 -----------------------------------------------------------------------------*/
 #pragma once
-#ifndef MI_INTERNAL_RANDOM_H
-#define MI_INTERNAL_RANDOM_H
+#ifndef MI_UTIL_RANDOM_H
+#define MI_UTIL_RANDOM_H
 
 #include "../types.h"
 
 void          _mi_random_init(mi_random_ctx_t* ctx);
-void          _mi_random_init_weak(mi_random_ctx_t* ctx);
 void          _mi_random_reinit_if_weak(mi_random_ctx_t * ctx);
 void          _mi_random_split(mi_random_ctx_t* ctx, mi_random_ctx_t* new_ctx);
 size_t        _mi_random_next(mi_random_ctx_t* ctx);
-size_t        _mi_os_random_weak(size_t extra_seed);
 
 // -------------------------------------------------------------------
 // Fast "random" shuffle

@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['wrappers_0',['C++ wrappers',['../group__cpp.html',1,'']]]
+  ['usable_20sizes_0',['Allocation with Usable Sizes',['../group__sized.html',1,'']]]
 ];

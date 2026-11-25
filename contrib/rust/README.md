@@ -19,7 +19,9 @@ static GLOBAL: MiMalloc = MiMalloc;
 - `Arena`: reserve memory for heaps that only allocate in it (see [Arenas](#arenas)).
 - `sys`: the raw C API (`mimalloc.h`).
 - Both `MiMalloc` and `&Heap` implement `core::alloc::Allocator` on Rust 1.100+
-  (or on an older nightly with the `nightly` feature).
+  (or on an older nightly with the `nightly` feature). For speed, `allocate` returns the
+  requested size instead of the full usable size; to use the full capacity, request
+  `good_size(n)` bytes upfront, or use `MiMallocExcess` that returns the full usable size.
 - Helpers such as `collect`, `option_set`, `stats_print` and `stats_json`.
 
 ## Arenas
@@ -42,25 +44,29 @@ let heap = Heap::new_in_arena(arena);
 - An `exclusive` arena keeps all other heaps out; otherwise any heap can use it as well.
 - Arenas cannot be removed, so they live until the process exits.
 - Arenas need at least `Arena::min_size()` bytes (32 MiB on 64-bit), and their start is
-  aligned to `Arena::min_alignment()` (256 MiB on 64-bit), so memory at an unaligned address
-  needs `2 * Arena::min_alignment()` bytes.
+  aligned to `Arena::min_alignment()` (256 MiB on 64-bit, or 64 KiB with the `secure` or `secure_checked` feature),
+  so memory at an unaligned address needs `max(min_size, min_alignment) + min_alignment` bytes.
 
 ## Features
 
 | Feature             | Description |
 |---------------------|-------------|
-| `secure`            | Security mitigations (guard pages, randomization, encoded free lists) |
+| `secure`            | Security mitigations (as `-DMI_SECURE=ON`) |
+| `secure_basic`      | Cheap security mitigations: guard pages, randomization, encoded free lists, double free detection (as `-DMI_SECURE=BASIC`) |
+| `secure_checked`    | `secure_basic` plus validated free pointers and randomized free lists (as `-DMI_SECURE=CHECKED`) |
 | `override`          | Also override `malloc`, `free`, etc. in the final binary |
 | `debug`             | Build mimalloc with assertions and internal checks |
 | `debug_in_debug`    | As `debug`, but only when `debug_assertions` are on |
 | `local_dynamic_tls` | Use the local-dynamic TLS model (for dynamically loaded libraries) |
-| `win_direct_tls`    | Use direct TLS slots on Windows |
 | `no_thp`            | Disable transparent huge pages by default on Linux |
 | `opt_arch`          | Architecture specific optimizations (as `-DMI_OPT_ARCH=ON`) |
+| `mte`               | Memory tagging; requires MTE support at runtime (aarch64 Linux, Android, and Apple only (where macOS also needs the MTE entitlement); as `-DMI_MTE=ON`, which also enables PAC unless `MIMALLOC_DEFINES="MI_PAC=0"`) |
+| `pac`               | Sign internal pointers with pointer authentication; requires PAC support at runtime (aarch64 Linux, Android, and Apple only; as `-DMI_PAC=ON`) |
 | `nightly`           | `Allocator` support on nightly compilers before Rust 1.100 (`mimalloc` only) |
 
 All features except `nightly` are build options of the C library in `mimalloc-sys`
-(and are forwarded by `mimalloc`).
+(and are forwarded by `mimalloc`). Feature `mte` does not need a separate `secure` or `pac` (but encompasses it).
+If several `secure*` features are enabled, the highest level is used.
 
 Architecture optimizations are also enabled automatically if the Rust target features
 already imply them (e.g. `-C target-cpu=native`).

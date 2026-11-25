@@ -29,6 +29,27 @@ fn feature(name: &str) -> bool {
     env::var_os(format!("CARGO_FEATURE_{}", name.to_uppercase())).is_some()
 }
 
+/// Check if `cfg!(debug_assertions)` is enabled for the current build.
+fn is_rust_debug() -> bool {
+    // Before Rust 1.93 the `CARGO_CFG_DEBUG_ASSERTIONS` variable was never set by cargo.
+    // On those versions, there is no way for build scripts to detect `cfg!(debug_assertions)` with 100% accuracy.
+    // However, checking the `PROFILE` gives a decent approximation.
+    if rustversion::cfg!(since(1.93)) {
+        // implemented in PR https://github.com/rust-lang/cargo/pull/16160
+        env::var_os("CARGO_CFG_DEBUG_ASSERTIONS").is_some()
+    } else {
+        // This is wrong in three cases
+        // 1. the profile inherits from "release" but enables debug-assertions
+        // 2. the profile inherits from "dev" but disables debug-assertions
+        // 3. if -Cdebug-assertions is manually set via RUSTFLAGS
+        //
+        // The "DEBUG" variable is not taken into consideration,
+        // because it would hurt compiling with release + debuginfo,
+        // which is often used for benchmarks.
+        matches!(env::var("PROFILE").as_deref(), Ok("debug"))
+    }
+}
+
 // Extra defines from `MIMALLOC_DEFINES`, e.g. `MI_DEBUG=3 MI_SKIP_COLLECT_ON_EXIT=1`
 fn user_defines() -> Vec<(String, Option<String>)> {
     println!("cargo:rerun-if-env-changed=MIMALLOC_DEFINES");
@@ -81,17 +102,39 @@ fn main() {
     };
 
     // build options
-    let debug = feature("debug")
-        || (feature("debug_in_debug") && env::var_os("CARGO_CFG_DEBUG_ASSERTIONS").is_some());
+    let debug = feature("debug") || (feature("debug_in_debug") && is_rust_debug());
     if debug {
         define("MI_DEBUG", "2");
     } else if !is_user("MI_DEBUG") {
         define("MI_DEBUG", "0");
         define("NDEBUG", "1");
     }
-    if feature("secure") {
-        define("MI_SECURE", "4");
+    // `mte` and `pac` require hardware and OS support at runtime (and fail at startup otherwise)
+    let hw_os =
+        target_arch == "aarch64" && (is_apple || target_os == "linux" || target_os == "android");
+    if feature("mte") {
+        if !hw_os {
+            panic!(
+                "the `mte` feature is only supported on aarch64 Linux, Android, and macOS targets"
+            );
+        }
+        define("MI_MTE", "2"); // ON (which also enables `MI_PAC=2` by default in `arch.h`)
     }
+    if feature("pac") {
+        if !hw_os || is_msvc {
+            panic!("the `pac` feature is only supported on aarch64 Linux, Android, and macOS targets with GCC or clang");
+        }
+        define("MI_PAC", "2"); // ON
+    }
+    // the highest enabled secure level is used (as features are additive)
+    if feature("secure") {
+        define("MI_SECURE", "4"); // ON
+    } else if feature("secure_checked") {
+        define("MI_SECURE", "2"); // CHECKED
+    } else if feature("secure_basic") {
+        define("MI_SECURE", "1"); // BASIC
+    } // (otherwise the default level in `types.h` is used: 2 with `mte` or `pac`, 3 on CHERI, and 0 otherwise;
+      //  opt out explicitly with `MIMALLOC_DEFINES="MI_SECURE=0"`)
     let is_override = feature("override") && !is_windows;
     if is_override {
         define("MI_MALLOC_OVERRIDE", "1");
@@ -106,9 +149,8 @@ fn main() {
     if is_musl {
         define("MI_LIBC_MUSL", "1");
     }
-    if feature("win_direct_tls") && is_windows {
-        define("MI_WIN_DIRECT_TLS", "1");
-    }
+    // Rust never uses the C++ `new` API, so don't define or reference `std::get_new_handler`
+    define("MI_NO_CXX_NEW_HANDLER", "1");
     for (name, value) in &user {
         build.define(name, value.as_deref());
     }
@@ -185,5 +227,5 @@ fn main() {
 
 fn is_apple_clang(compiler: &cc::Tool) -> bool {
     let out = compiler.to_command().arg("--version").output();
-    out.is_ok_and(|out| String::from_utf8_lossy(&out.stdout).contains("Apple clang"))
+    matches!(out, Ok(out) if String::from_utf8_lossy(&out.stdout).contains("Apple clang"))
 }

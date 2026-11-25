@@ -10,6 +10,7 @@ terms of the MIT license. A copy of the license can be found in the file
 #define MI_ARENA_H
 
 #include "mimalloc/util/libc.h"
+#include "mimalloc/prim/prim-mte.h"  // mi_memtag_meta_init_adjacent
 #include "mimalloc/arena/arena.h"
 #include "bitmap.h"
 
@@ -23,7 +24,8 @@ static inline bool mi_arena_is_suitable(mi_arena_t* arena, mi_arena_t* req_arena
   if (arena == req_arena) return true;                         // they match
   if (arena == NULL) return false;
   if (req_arena == NULL && !arena->is_exclusive) return true;  // or the arena is not exclusive, and we didn't request a specific one
-  if (arena->parent != NULL && arena->parent == req_arena) return true;  // sub-arena? (note that req_arena is never a sub arena)
+  mi_arena_t* const parent = mi_arena_parent(arena);
+  if (parent != NULL && parent == req_arena) return true;  // sub-arena? (note that req_arena is never a sub arena)
   return false;
 }
 
@@ -41,8 +43,8 @@ static inline size_t mi_arena_info_slices(mi_arena_t* arena) {
   return arena->info_slices;
 }
 
-// slices reserved for page meta info at the start of aligned chunks
-static inline size_t mi_arena_page_meta_aligned_slice_count(void) {
+// slices of the aligned page meta data array at the start of each aligned area
+static inline size_t mi_arena_page_meta_aligned_array_slices(void) {
   #if MI_PAGE_META_IS_ALIGNED
   return mi_divide_up(MI_PAGE_META_ALIGNED_COUNT * sizeof(mi_page_t), MI_ARENA_SLICE_SIZE);
   #else
@@ -50,9 +52,13 @@ static inline size_t mi_arena_page_meta_aligned_slice_count(void) {
   #endif
 }
 
-// Start of the arena memory area
-static inline uint8_t* mi_arena_start(mi_arena_t* arena) {
-  return ((uint8_t*)arena->start);
+// slices reserved at the start of each aligned area: the page meta data array (with a guard slice in front and after in secure mode)
+static inline size_t mi_arena_page_meta_aligned_slice_count(void) {
+  #if MI_PAGE_META_IS_ALIGNED
+  return (MI_ARENA_GUARD_SLICES + mi_arena_page_meta_aligned_array_slices() + MI_ARENA_GUARD_SLICES);
+  #else
+  return 0;
+  #endif
 }
 
 // Start of a slice
@@ -61,19 +67,52 @@ static inline uint8_t* mi_arena_slice_start(mi_arena_t* arena, size_t slice_inde
   return (mi_arena_start(arena) + _mi_size_of_slices(slice_index));
 }
 
+// Permute within chunks: arena slice counts need not be powers of two.
+static inline mi_page_t* mi_arena_page_meta_at_slice(mi_arena_t* arena, size_t slice_index) {
+  mi_assert_internal(arena->pages_meta != NULL);
+  mi_assert_internal(slice_index < arena->slice_count);
+  mi_assert_internal((arena->slice_count % MI_BCHUNK_BITS) == 0);
+  mi_assert_internal(mi_is_power_of_two(MI_BCHUNK_BITS) && (MI_PAGE_META_IDX_MUL % 2) == 1);  // (gcd(MI_BCHUNK_BITS, MI_PAGE_META_IDX_MUL) == 1) => one-to-one maping
+  const size_t idx = mi_align_down(slice_index,MI_BCHUNK_BITS) + (slice_index * MI_PAGE_META_IDX_MUL) % MI_BCHUNK_BITS;   // unsigned multiply overflow is ok
+  return &arena->pages_meta[idx];
+}
+
 // get the arena and slice span
 static inline mi_arena_t* mi_arena_from_memid(mi_memid_t memid, size_t* slice_index, size_t* slice_count) {
   mi_assert_internal(memid.memkind == MI_MEM_ARENA);
-  mi_arena_t* arena = memid.mem.arena.arena;
+  mi_arena_t* arena = mi_memid_arena(memid);
   if (slice_index!=NULL) { *slice_index = memid.mem.arena.slice_index; }
   if (slice_count!=NULL) { *slice_count = memid.mem.arena.slice_count; }
   return arena;
 }
 
+// With memory tagging, the tag class index of separate page meta data (alternating for adjacent page meta data)
+static inline size_t mi_page_meta_memtag_idx(const mi_page_t* page) {
+  return (mi_addr(page) / sizeof(mi_page_t));
+}
+
+// With memory tagging, (re)tag the separate arena page meta entry `page` with a random tag that differs from its current tag
+// and the adjacent arena meta data (see `arena.c:mi_arena_memtag_init`); returns `page` with its new tag.
+// The entries are preceded by the arena bitmaps, but the last entry is followed by untagged memory (or a guard page in secure mode).
+static inline mi_page_t* mi_arena_page_meta_memtag(mi_arena_t* arena, mi_page_t* page) {
+  const size_t i = (size_t)(mi_addr(page) - mi_addr(arena->pages_meta)) / sizeof(mi_page_t);
+  mi_assert_internal(i < arena->slice_count);
+  return (mi_page_t*)mi_memtag_meta_init_adjacent(page, sizeof(mi_page_t), mi_page_meta_memtag_idx(page), true /* has prev */, i + 1 < arena->slice_count /* has next */);
+}
+
 // initialize the bitmap for `slice_count` slices at base (and advance the base pointer)
-static inline mi_bitmap_t* mi_arena_bitmap_init(size_t slice_count, uint8_t** base) {
+// reserve a bitmap for `slice_count` slices at base (and advance the base pointer) but leave it
+// uninitialized (zero chunks) until `mi_bitmap_ensure_init`; the memory must already be zero.
+static inline mi_bitmap_t* mi_arena_bitmap_init_lazy(size_t slice_count, uint8_t** base) {
   mi_bitmap_t* bitmap = (mi_bitmap_t*)(*base);
-  *base = (*base) + mi_bitmap_init(bitmap, slice_count, true /* already zero */);
+  const size_t size = mi_bitmap_size(slice_count, NULL);
+  *base = (*base) + size;
+  return (mi_bitmap_t*)mi_ptr_bounded_data(bitmap, size);
+}
+
+static inline mi_bitmap_t* mi_arena_bitmap_init(size_t slice_count, uint8_t** base) {
+  mi_bitmap_t* bitmap = mi_arena_bitmap_init_lazy(slice_count, base);
+  mi_bitmap_init(bitmap, slice_count, true /* already zero */);
   return bitmap;
 }
 

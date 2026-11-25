@@ -109,7 +109,7 @@ typedef mi_bchunk_t mi_bchunkmap_t;
 
 // An atomic bitmap
 typedef mi_decl_bchunk_align struct mi_bitmap_s {
-  _Atomic(size_t)  chunk_count;         // total count of chunks (0 < N <= MI_BCHUNKMAP_BITS)
+  _Atomic(size_t)  chunk_count;         // total count of chunks (0 <= N <= MI_BCHUNKMAP_BITS; 0 if lazily uninitialized)
   size_t           _padding[MI_BCHUNK_SIZE/MI_SIZE_SIZE - 1];    // suppress warning on msvc
   mi_bchunkmap_t   chunkmap;
   mi_bchunk_t      chunks[MI_BITMAP_DEFAULT_CHUNK_COUNT];        // usually dynamic MI_BITMAP_MAX_CHUNK_COUNT
@@ -142,6 +142,16 @@ size_t mi_bitmap_size(size_t bit_count, size_t* chunk_count);
 // Initialize a bitmap to all clear; avoid a mem_zero if `already_zero` is true
 // returns the size of the bitmap.
 size_t mi_bitmap_init(mi_bitmap_t* bitmap, size_t bit_count, bool already_zero);
+
+// Lazily initialize a bitmap in zero memory before its first set (to avoid touching its memory until needed).
+// Until then it has zero chunks and reads as empty. Idempotent, so racing callers are fine.
+static inline void mi_bitmap_ensure_init(mi_bitmap_t* bitmap, size_t bit_count) {
+  if mi_unlikely(mi_atomic_load_relaxed(&bitmap->chunk_count) == 0) {
+    size_t chunk_count;
+    mi_bitmap_size(bit_count, &chunk_count);
+    mi_atomic_store_release(&bitmap->chunk_count, chunk_count);
+  }
+}
 
 // Set/clear a sequence of `n` bits in the bitmap (and can cross chunks).
 // Not atomic so only use if still local to a thread.
@@ -189,13 +199,13 @@ static inline bool mi_bitmap_is_clear(mi_bitmap_t* bitmap, size_t idx) {
 }
 
 // Called once a bit is cleared to see if the memory slice can be claimed.
-typedef bool (mi_claim_fun_t)(size_t slice_index, mi_arena_t* arena, bool* keep_set);
+typedef bool (mi_claim_fun_t)(size_t slice_index, void* arg, bool* keep_set);
 
 // Find a set bits in the bitmap, atomically clear it, and check if `claim` returns true.
 // If not claimed, continue on (potentially setting the bit again depending on `keep_set`).
 // Returns true on success, and in that case sets the index: `0 <= *pidx <= MI_BITMAP_MAX_BITS-n`.
 mi_decl_nodiscard bool mi_bitmap_try_find_and_claim(mi_bitmap_t* bitmap, size_t tseq, size_t* pidx,
-                                                    mi_claim_fun_t* claim, mi_arena_t* arena );
+                                                    mi_claim_fun_t* claim, void* arg );
 
 
 // Atomically clear a bit but only if it is set. Will block otherwise until the bit is set.

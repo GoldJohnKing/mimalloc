@@ -5,17 +5,19 @@ terms of the MIT license. A copy of the license can be found in the file
 "LICENSE" at the root of this distribution.
 -----------------------------------------------------------------------------*/
 #pragma once
-#ifndef MI_INTERNAL_THEAP_H
-#define MI_INTERNAL_THEAP_H
+#ifndef MI_HEAP_THEAP_H
+#define MI_HEAP_THEAP_H
 
 #include "../types.h"
 
 size_t        _mi_theap_random_next(mi_theap_t* theap);
-void          _mi_theap_init(mi_theap_t* theap, mi_heap_t* heap, mi_tld_t* tld);
+bool          _mi_theap_init(mi_theap_t* theap, mi_heap_t* heap, mi_tld_t* tld);
+void          _mi_theap_meta_init(mi_theap_t* theap, mi_heap_t* heap, mi_tld_t* tld);
 mi_theap_t*   _mi_theap_alloc(mi_heap_t* heap, mi_tld_t* tld);
 mi_theap_t*   _mi_theap_create(mi_heap_t* heap, mi_tld_t* tld);
 void          _mi_theap_collect_abandon(mi_theap_t* theap);
 void          _mi_theap_abandon_owned_pages(mi_theap_t* theap);
+void          _mi_theap_release(mi_theap_t* theap, mi_theap_t* slot_theap);
 bool          _mi_theap_area_visit_blocks(const mi_heap_area_t* area, mi_page_t* page, mi_block_visit_fun* visitor, void* arg);
 
 void          _mi_heap_detach_theaps( mi_heap_t* heap );
@@ -59,7 +61,7 @@ static inline mi_page_t* mi_theap_get_free_small_page(mi_theap_t* theap, size_t 
 }
 
 static inline bool mi_theap_is_detached(mi_theap_t* theap) {
-  return (theap!=NULL && theap->tld->thread_id == MI_THREADID_DETACHED);
+  return (theap!=NULL && theap->tld->thread_id == MI_THREAD_ID_DETACHED);
 }
 
 #endif

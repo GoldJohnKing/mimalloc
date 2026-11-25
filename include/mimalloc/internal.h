@@ -22,6 +22,8 @@ terms of the MIT license. A copy of the license can be found in the file
 
 #include "prim/os.h"
 #include "prim/prim-tls.h"
+#include "prim/prim-mte.h"
+#include "prim/prim-pac.h"
 
 #include "util/libc.h"
 #include "util/options.h"
@@ -35,7 +37,7 @@ terms of the MIT license. A copy of the license can be found in the file
 
 #include "heap/page-map.h"
 #include "heap/subproc.h"
-#include "heap/init.h"
+#include "heap/process.h"
 #include "heap/theap.h"
 #include "heap/heap.h"
 

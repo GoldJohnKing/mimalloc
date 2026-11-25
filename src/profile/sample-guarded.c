@@ -10,7 +10,10 @@ terms of the MIT license. A copy of the license can be found in the file
 #include "mimalloc/alloc/page.h"
 #include "mimalloc/profile/sample-guarded.h"
 
-mi_decl_export void mi_theap_guarded_set_sample_rate(mi_theap_t* theap, size_t sample_rate, size_t seed) {
+static void mi_theap_guarded_set_sample_rate_ex(mi_theap_t* theap, size_t sample_rate, size_t seed) {
+  #if !MI_GUARDED
+  sample_rate = 0;
+  #endif
   theap->guarded_sample_rate  = (sample_rate > MI_SAMPLE_RATE_MAX ? MI_SAMPLE_RATE_MAX : sample_rate);
   if (theap->guarded_sample_rate > 1) {
     if (seed == 0) {
@@ -24,21 +27,31 @@ mi_decl_export void mi_theap_guarded_set_sample_rate(mi_theap_t* theap, size_t s
   _mi_theap_update_sample_rate(theap);
 }
 
-mi_decl_export void mi_theap_guarded_set_size_bound(mi_theap_t* theap, size_t min, size_t max) {
+static void mi_theap_guarded_set_size_bound_ex(mi_theap_t* theap, size_t min, size_t max) {
   theap->guarded_size_min = min;
   theap->guarded_size_max = (min > max ? min : max);
 }
 
+mi_decl_export void mi_theap_guarded_set_sample_rate(mi_theap_t* theap, size_t sample_rate, size_t seed) {
+  if (theap==NULL || !mi_theap_is_initialized(theap) || !mi_theap_handle_is_valid(theap)) return;
+  mi_theap_guarded_set_sample_rate_ex(theap, sample_rate, seed);
+}
+
+mi_decl_export void mi_theap_guarded_set_size_bound(mi_theap_t* theap, size_t min, size_t max) {
+  if (theap==NULL || !mi_theap_is_initialized(theap) || !mi_theap_handle_is_valid(theap)) return;
+  mi_theap_guarded_set_size_bound_ex(theap, min, max);
+}
+
 void _mi_theap_guarded_init(mi_theap_t* theap) {
   #if MI_GUARDED
-  mi_theap_guarded_set_sample_rate(theap,
+  mi_theap_guarded_set_sample_rate_ex(theap,
     (size_t)mi_option_get_clamp(mi_option_guarded_sample_rate, 0, LONG_MAX),
     (size_t)mi_option_get(mi_option_guarded_sample_seed));
-  mi_theap_guarded_set_size_bound(theap,
+  mi_theap_guarded_set_size_bound_ex(theap,
     (size_t)mi_option_get_clamp(mi_option_guarded_min, 0, LONG_MAX),
     (size_t)mi_option_get_clamp(mi_option_guarded_max, 0, LONG_MAX) );
   #else
-  mi_theap_guarded_set_sample_rate(theap,0,0);
+  mi_theap_guarded_set_sample_rate_ex(theap,0,0);
   #endif
 }
 
@@ -49,8 +62,10 @@ void _mi_theap_guarded_init(mi_theap_t* theap) {
 static void* mi_block_ptr_set_guarded(mi_block_t* block, size_t obj_size, size_t* usable_size) {
   // todo: we can still make padding work by moving it out of the guard page area
   mi_page_t* const page = mi_ptr_page(block);
+  if mi_unlikely(page==NULL) return NULL;  // should not happen, but avoids gcc -Wstringop-overflow warnings
+  block = (mi_block_t*)mi_ptr_rederive(mi_page_start(page), block);  // `block` is bounded to the requested size
   mi_page_set_has_interior_pointers(page, true);
-  block->next = MI_BLOCK_TAG_GUARDED;
+  mi_atomic_store_relaxed(&block->next, MI_BLOCK_TAG_GUARDED);
 
   // set guard page at the end of the block
   const size_t block_size = mi_page_block_size(page);  // must use `block_size` to match `mi_free_local`
@@ -61,13 +76,13 @@ static void* mi_block_ptr_set_guarded(mi_block_t* block, size_t obj_size, size_t
     mi_free(block);
     return NULL;
   }
-  uint8_t* guard_page = (uint8_t*)block + block_size - os_page_size;
+  uint8_t* guard_page = (uint8_t*)mi_page_vmem_ptr(page, (uint8_t*)block + block_size - os_page_size);
   // note: the alignment of the guard page relies on blocks being os_page_size aligned which
   // is ensured in `mi_arena_page_alloc_fresh`.
   mi_assert_internal(mi_is_aligned(block, os_page_size));
   mi_assert_internal(mi_is_aligned(guard_page, os_page_size));
   if (!page->memid.is_pinned && mi_is_aligned(guard_page, os_page_size)) {
-    const bool ok = _mi_os_protect(guard_page, os_page_size);
+    const bool ok = _mi_os_guard(guard_page, os_page_size, true /* committed */);
     if mi_unlikely(!ok) {
       _mi_warning_message("failed to set a guard page behind an object (object %p of size %zu)\n", block, block_size);
     }
@@ -101,7 +116,11 @@ mi_decl_restrict void* _mi_theap_malloc_guarded(mi_theap_t* theap, size_t size, 
     return NULL;
   }
   const size_t os_page_size = _mi_os_page_size();
-  const size_t obj_size = (mi_option_is_enabled(mi_option_unsafe_guarded_precise) ? size : mi_align_up(size, MI_MAX_ALIGN_SIZE));
+  #if MI_UNSAFE_GUARDED_PRECISE
+  const size_t obj_size = size;
+  #else
+  const size_t obj_size = mi_align_up(size, MI_MAX_ALIGN_SIZE);
+  #endif
   const size_t bsize    = mi_align_up(mi_align_up(obj_size, MI_MAX_ALIGN_SIZE) + sizeof(mi_block_t), MI_MAX_ALIGN_SIZE);
   const size_t req_size = mi_align_up(bsize + os_page_size, os_page_size);
   // const size_t threshold = mi_theap_disable_profiler(theap);
@@ -136,7 +155,7 @@ mi_decl_restrict void* _mi_theap_malloc_guarded(mi_theap_t* theap, size_t size, 
     mi_assert_internal(mi_page_block_size(page) <= MI_SMALL_MAX_OBJ_SIZE);
   }
   #endif
-  return p;
+  return mi_ptr_bounded_data(p, mi_bounds_user_size(size - MI_PADDING_SIZE));
 }
 
 
@@ -148,23 +167,23 @@ void _mi_page_block_unguard(mi_page_t* page, mi_block_t* block, void* p) {
   mi_assert_internal(mi_block_ptr_is_guarded(block, p));
   mi_assert_internal(mi_page_has_interior_pointers(page));
   mi_assert_internal((uint8_t*)p - (uint8_t*)block >= (ptrdiff_t)sizeof(mi_block_t));
-  mi_assert_internal(block->next == MI_BLOCK_TAG_GUARDED);
+  mi_assert_internal(mi_atomic_load_relaxed(&block->next) == MI_BLOCK_TAG_GUARDED);
 
   const size_t bsize = mi_page_block_size(page);
   const size_t psize = _mi_os_page_size();
   mi_assert_internal(bsize > psize);
   if (page->memid.is_pinned) return;  // no guard page was set (see `mi_block_ptr_set_guarded`)
-  void* gpage = (uint8_t*)block + bsize - psize;
+  void* gpage = mi_page_vmem_ptr(page, (uint8_t*)block + bsize - psize);
   mi_assert_internal(mi_is_aligned(gpage, psize));
-  _mi_os_unprotect(gpage, psize);
+  _mi_os_unguard(gpage, psize, true /* committed */);
 }
 
 // unguard a whole page (called from `mi_heap_destroy`)
 void _mi_page_unguard_all(mi_page_t* page) {
   if mi_likely(!mi_page_has_interior_pointers(page) || page->memid.is_pinned) return;
-  uint8_t* const start = mi_page_start(page);
+  uint8_t* const start = (uint8_t*)mi_page_vmem_ptr(page, mi_page_start(page));
   const size_t psize = mi_page_committed(page);
-  _mi_os_unprotect(start,psize);  // unprotect all at once as we cannot know which blocks are guarded
+  _mi_os_unguard(start, psize, true /* committed */);  // unguard all at once as we cannot know which blocks are guarded
 }
 #else
 void _mi_page_block_unguard(mi_page_t* page, mi_block_t* block, void* p) {
